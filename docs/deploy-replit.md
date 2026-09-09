@@ -5,7 +5,17 @@ event, not the night before.
 
 ## 1. Import the repository
 
-In Replit: **Create Repl → Import from GitHub**, and paste the repository URL.
+Open this link, which goes straight to the import screen:
+
+> https://replit.com/github/aaradhyjani-pixel/mock-stock-terminal
+
+The repository is **private**, so the first time you will be asked to connect
+your GitHub account to Replit. Authorise it and the import proceeds.
+
+It is private on purpose. `config/scenarios/` contains the scripted news and
+price moves for each trading day. A participant who found that repository would
+know every headline and every move before it happened, which would end the
+competition rather than help it. Keep it private until after the event.
 
 Replit reads the `.replit` file in the repo, so the Python version, the run
 command and the deployment target are already set.
