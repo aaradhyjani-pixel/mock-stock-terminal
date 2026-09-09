@@ -158,7 +158,9 @@ async function loadInstruments() {
     state.instruments.set(row.symbol, row);
     state.order.set(row.symbol, index);
   });
-  if (!state.selected && data.instruments.length) select(data.instruments[0].symbol);
+  if (!state.selected && data.instruments.length) {
+    select(data.instruments[0].symbol, { focus: false });
+  }
   renderWatchlist();
 }
 
@@ -438,12 +440,15 @@ function statusBadge(row) {
   return "";
 }
 
-async function select(symbol) {
+async function select(symbol, { focus = true } = {}) {
   state.selected = symbol;
   renderWatchlist();
   renderTicketQuote();
   await loadCandles();
-  if (window.innerWidth <= 780) showPane("centre");
+  // On a phone, tapping a stock should take you to it. Selecting one during
+  // start-up should not: landing on the ticket for a stock nobody chose is a
+  // confusing first screen. Start on the market list.
+  if (focus && window.innerWidth <= 780) showPane("centre");
 }
 
 /* ------------------------------------------------------------------ ticket */
