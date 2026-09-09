@@ -1,0 +1,67 @@
+# The rulebook.
+#
+# Every number a participant is told, and every number the code enforces, comes
+# from this file. Change it before the event, publish the participant rulebook
+# from it, and then do not touch it again: the operator console refuses to
+# reload this while the market is open, on purpose.
+
+competition_name: "Mock Market Championship"
+starting_capital: "1000000"      # Rs 10,00,000 per team
+max_members_per_team: 5
+
+fees:
+  enabled: true
+  # "realistic" charges an Indian discount broker's itemised schedule.
+  # "flat" charges flat_pct per side and nothing else.
+  mode: realistic
+  flat_pct: "0.10"
+  brokerage_pct: "0.03"
+  brokerage_cap: "20"            # Rs 20 per order, whichever is lower
+  stt_pct: "0.10"
+  stt_on_buy: true
+  exchange_pct: "0.003"
+  sebi_pct: "0.0001"
+  stamp_duty_pct: "0.015"        # buy side only
+  gst_pct: "18"                  # on brokerage + exchange charge
+
+margin:
+  # 20% initial margin is the 5x leverage cap in the brief.
+  initial_pct: "20"
+  # A team is warned here and force-covered at maintenance_pct.
+  warning_pct: "15"
+  maintenance_pct: "12"
+  # Forced covering stops once equity is back above this share of short value.
+  liquidate_to_pct: "20"
+  borrow_fee_pct_per_day: "0.05"
+  # Longs are cash-only. Turning this on is not implemented; it is here to make
+  # the decision explicit rather than implicit.
+  allow_long_leverage: false
+
+session:
+  trading_days: 5
+  pre_open_seconds: 120          # 2 minutes
+  open_seconds: 1500             # 25 minutes
+  break_seconds: 300             # 5 minutes
+  auto_advance: true             # false makes the operator drive every transition
+  tick_seconds: "1"
+  snapshot_seconds: 30
+  leaderboard_seconds: 10
+  public_leaderboard_size: 10
+  blackout_last_seconds: 600     # last 10 minutes of the final day
+
+market:
+  band_pct: "20"                 # default circuit band, per stock override below
+  index_name: "CLUB 50"
+  index_base: "20000"
+  market_breaker_pct: "10"
+  market_breaker_halt_seconds: 180
+  impact_enabled: true
+  # A 10 lakh order in a 2 crore book moves the price about 0.75%; a 40 lakh
+  # order about 3%. Raise it to punish size harder, set 0 for a tape driven
+  # only by the operators.
+  impact_coefficient: "0.15"
+  impact_window_seconds: 5
+  slippage_enabled: true
+  max_order_qty: 10000
+  max_orders_per_10s: 10
+  default_slippage_tolerance_pct: "1.0"

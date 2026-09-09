@@ -1,0 +1,65 @@
+# Replit configuration for the mock exchange terminal.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#  deploymentTarget MUST stay "vm". Do not change it to "autoscale".
+#
+#  Autoscale runs more than one instance of the app. This system is built
+#  around a single authoritative market engine: one clock, one random walk,
+#  one answer to "what is the price right now". Two instances means two
+#  engines producing two different prices for the same stock at the same
+#  moment, and a fill nobody can defend when a team asks why they got it.
+#
+#  Autoscale also sleeps between requests, which would stop the market clock
+#  whenever the hall went quiet.
+# ─────────────────────────────────────────────────────────────────────────────
+
+modules = ["python-3.12", "postgresql-16"]
+run = "python -m app.main"
+entrypoint = "app/main.py"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+deploymentTarget = "vm"
+run = ["sh", "-c", "python -m app.main"]
+# Install dependencies and create the schema before the first boot. The seed
+# script only creates what is missing, so it is safe to re-run on every deploy.
+build = ["sh", "-c", "pip install -e . && python -m scripts.seed"]
+
+[env]
+EXCHANGE_HOST = "0.0.0.0"
+EXCHANGE_PORT = "8000"
+EXCHANGE_SECURE_COOKIES = "true"
+EXCHANGE_LOG_LEVEL = "INFO"
+# Deliberately no EXCHANGE_DATABASE_URL here. With the PostgreSQL module
+# enabled Replit sets DATABASE_URL, and the app adopts it automatically. Set
+# EXCHANGE_DATABASE_URL in Secrets only if you want to override that.
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+[workflows]
+runButton = "Run the exchange"
+
+[[workflows.workflow]]
+name = "Run the exchange"
+mode = "sequential"
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m app.main"
+
+[[workflows.workflow]]
+name = "Seed a fresh competition"
+mode = "sequential"
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m scripts.seed --reset --demo-teams 8"
+
+[[workflows.workflow]]
+name = "Run the tests"
+mode = "sequential"
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m pytest -q"

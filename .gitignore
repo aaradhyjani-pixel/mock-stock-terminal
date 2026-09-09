@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# The competition database and anything exported from it.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+exports/
+*.csv
+!config/*.csv
+
+# Credentials. team-credentials.json is the one-time output of a team import
+# and contains cleartext passwords; it must never reach the repository.
+.env
+team-credentials.*

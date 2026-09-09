@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operator sign in</title>
+  <link rel="stylesheet" href="/static/css/terminal.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23f5a524'/><circle cx='16' cy='16' r='6' fill='%23241a04'/></svg>">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="brand">
+      <span class="mark" style="background:linear-gradient(135deg,#f5a524,#a86a00);color:#241a04">O</span>
+      Operator console
+    </div>
+    <p class="muted" style="margin:6px 0 0">
+      Organisers only. Participants sign in at <a href="/login">the terminal</a>.
+    </p>
+
+    <div class="error-box" id="error" hidden></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label for="login">Operator login</label>
+        <input type="text" id="login" autocomplete="username" placeholder="market"
+               autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn primary block" id="submit">Sign in</button>
+    </form>
+
+    <p class="dim" style="font-size:11.5px;margin:16px 0 0">
+      Every action taken here is recorded with your name, the time, and what changed.
+    </p>
+  </div>
+</div>
+
+<script type="module">
+import { opsApi } from "/static/js/api.js";
+
+const el = (id) => document.getElementById(id);
+try {
+  const theme = localStorage.getItem("exchange.theme");
+  if (theme) document.documentElement.setAttribute("data-theme", theme);
+} catch { /* ignore */ }
+
+el("loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = el("submit");
+  const error = el("error");
+  error.hidden = true;
+  submit.disabled = true;
+  submit.textContent = "Signing in...";
+  try {
+    const data = await opsApi.request("/api/auth/ops/login", {
+      method: "POST",
+      body: { login: el("login").value.trim().toLowerCase(), password: el("password").value },
+      retry: false,
+    });
+    opsApi.setToken(data.access_token);
+    window.location.href = "/console";
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+    submit.disabled = false;
+    submit.textContent = "Sign in";
+    el("password").value = "";
+    el("password").focus();
+  }
+});
+</script>
+</body>
+</html>

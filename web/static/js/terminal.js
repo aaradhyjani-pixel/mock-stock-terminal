@@ -1,0 +1,921 @@
+/* The participant terminal.
+ *
+ * One page, five panes, driven by a single WebSocket. The design rules it
+ * follows:
+ *
+ * - The server prices everything. This file never computes a fill price, a
+ *   charge or a margin figure; it asks /api/orders/preview and displays what
+ *   comes back. Two implementations of the margin formula is one too many.
+ * - Money stays a string from the server to the screen.
+ * - When the socket is down, trading controls are disabled and say why. An
+ *   order priced against a frozen quote is worse than a short wait.
+ */
+
+import { api } from "./api.js";
+import { CandleChart, toCandles } from "./chart.js";
+import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, shortTime, signClass } from "./format.js";
+import { Stream } from "./stream.js";
+
+const el = (id) => document.getElementById(id);
+
+const state = {
+  me: null,
+  market: null,
+  instruments: new Map(),
+  order: new Map(),          // display order of symbols
+  selected: null,
+  funds: null,
+  positions: [],
+  orders: [],
+  news: [],
+  leaderboard: { rows: [], you: null, blackout: false },
+  unreadNews: 0,
+  connected: false,
+  ticket: { side: "BUY", type: "MARKET", qty: 1 },
+  preview: null,
+  sort: { key: "symbol", dir: 1 },
+  filter: "",
+  chart: null,
+  interval: "1m",
+};
+
+const stream = new Stream("/ws");
+
+/* ------------------------------------------------------------------ startup */
+
+async function boot() {
+  applyStoredTheme();
+
+  try {
+    state.me = await api.get("/api/auth/me");
+  } catch {
+    window.location.href = "/login";
+    return;
+  }
+
+  el("teamName").textContent = state.me.team.name;
+  el("memberName").textContent = state.me.member.name;
+
+  wireChrome();
+  wireTicket();
+  wireTabs();
+  wireMobileNav();
+
+  state.chart = new CandleChart(el("chart"));
+
+  await Promise.all([loadInstruments(), loadPortfolio(), loadOrders(), loadNews(), loadLeaderboard()]);
+
+  wireStream();
+  // If WebSockets turn out to be unavailable here, the terminal keeps working
+  // on REST polling. Each source is reshaped into the same event the socket
+  // would have sent, so no handler below needs to know which path it came by.
+  stream.usePolling([
+    {
+      url: "/api/market",
+      event: "market_state",
+    },
+    {
+      url: "/api/instruments",
+      event: "quotes",
+      transform: (body) => ({ quotes: body.instruments }),
+    },
+    {
+      url: "/api/portfolio",
+      event: "portfolio",
+      transform: (body) => ({ funds: body.funds, positions: body.positions }),
+    },
+  ]);
+  stream.connect(api.token);
+
+  setInterval(tickClock, 250);
+  setInterval(() => { if (state.connected) loadLeaderboard(); }, 20000);
+}
+
+function applyStoredTheme() {
+  let theme = null;
+  try {
+    theme = localStorage.getItem("exchange.theme");
+  } catch { /* private browsing */ }
+  if (theme) document.documentElement.setAttribute("data-theme", theme);
+}
+
+function wireChrome() {
+  el("themeToggle").addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", current);
+    try { localStorage.setItem("exchange.theme", current); } catch { /* ignore */ }
+    state.chart?.draw();
+  });
+
+  el("logout").addEventListener("click", async () => {
+    stream.close();
+    try { await api.post("/api/auth/logout"); } catch { /* signing out anyway */ }
+    api.clearToken();
+    window.location.href = "/login";
+  });
+
+  el("search").addEventListener("input", (event) => {
+    state.filter = event.target.value.trim().toUpperCase();
+    renderWatchlist();
+  });
+
+  document.querySelectorAll("#watchTable th.sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.key;
+      state.sort = state.sort.key === key
+        ? { key, dir: -state.sort.dir }
+        : { key, dir: key === "symbol" ? 1 : -1 };
+      renderWatchlist();
+    });
+  });
+
+  document.querySelectorAll("[data-interval]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.interval = button.dataset.interval;
+      document.querySelectorAll("[data-interval]").forEach((b) =>
+        b.setAttribute("aria-pressed", String(b === button)));
+      await loadCandles();
+    });
+  });
+
+  // Keyboard shortcuts, desktop only. B and S are what a trader reaches for.
+  document.addEventListener("keydown", (event) => {
+    if (event.target.matches("input, textarea, select")) {
+      if (event.key === "Escape") event.target.blur();
+      return;
+    }
+    if (event.key === "b" || event.key === "B") setSide("BUY");
+    if (event.key === "s" || event.key === "S") setSide("SELL");
+    if (event.key === "/") { event.preventDefault(); el("search").focus(); }
+  });
+}
+
+/* ------------------------------------------------------------------ loading */
+
+async function loadInstruments() {
+  const data = await api.get("/api/instruments");
+  data.instruments.forEach((row, index) => {
+    state.instruments.set(row.symbol, row);
+    state.order.set(row.symbol, index);
+  });
+  if (!state.selected && data.instruments.length) select(data.instruments[0].symbol);
+  renderWatchlist();
+}
+
+async function loadPortfolio() {
+  const data = await api.get("/api/portfolio");
+  state.funds = data.funds;
+  state.positions = data.positions;
+  state.limits = data.limits;
+  state.pnl = data.pnl;
+  renderFunds();
+  renderPositions();
+}
+
+async function loadOrders() {
+  const data = await api.get("/api/orders");
+  state.orders = data.orders;
+  renderOrders();
+}
+
+async function loadNews() {
+  const data = await api.get("/api/news");
+  state.news = data.news;
+  renderNews();
+}
+
+async function loadLeaderboard() {
+  try {
+    state.leaderboard = await api.get("/api/leaderboard");
+    renderLeaderboard();
+  } catch { /* the board is not worth an error message */ }
+}
+
+async function loadCandles() {
+  if (!state.selected) return;
+  try {
+    const data = await api.get(`/api/instruments/${state.selected}/candles?interval=${state.interval}&limit=180`);
+    const markers = state.news
+      .filter((item) => (item.symbols || []).includes(state.selected))
+      .map((item) => ({ ts: item.published_at }));
+    state.chart.setData(state.selected, toCandles(data.candles), markers);
+  } catch { /* chart stays as it was */ }
+}
+
+/* ------------------------------------------------------------------ streams */
+
+function wireStream() {
+  stream.on("status", ({ connected, degraded }) => {
+    // Degraded means the live tape is gone but REST still answers, so prices
+    // are a couple of seconds old and trading is still safe: the server prices
+    // every order anyway. Only a total loss of contact disables the ticket.
+    state.connected = connected || Boolean(degraded);
+    state.degraded = Boolean(degraded) && !connected;
+    const banner = el("offline");
+    banner.hidden = connected;
+    banner.textContent = state.degraded
+      ? "Live updates are unavailable, so prices refresh every couple of seconds. Trading still works."
+      : "Reconnecting to the exchange. Trading is paused until the connection is back.";
+    banner.style.background = state.degraded ? "var(--panel-3)" : "";
+    banner.style.color = state.degraded ? "var(--muted)" : "";
+    updateTicketAvailability();
+  });
+
+  stream.on("unauthorised", async () => {
+    if (await api.refresh()) stream.connect(api.token);
+    else window.location.href = "/login";
+  });
+
+  stream.on("snapshot", (data) => {
+    applyMarket(data.market);
+    data.instruments.forEach((row) => state.instruments.set(row.symbol, row));
+    if (data.portfolio) {
+      state.funds = data.portfolio.funds;
+      state.positions = data.portfolio.positions;
+      renderFunds();
+      renderPositions();
+    }
+    renderWatchlist();
+    renderTicketQuote();
+  });
+
+  stream.on("quotes", (data) => {
+    for (const quote of data.quotes) {
+      const existing = state.instruments.get(quote.symbol);
+      if (!existing) continue;
+      quote.name = existing.name;
+      quote.sector = existing.sector;
+      quote.tick_size = existing.tick_size;
+      quote._prev = existing.last;
+      state.instruments.set(quote.symbol, { ...existing, ...quote });
+    }
+    if (data.index) renderIndex(data.index);
+    renderWatchlist();
+    renderTicketQuote();
+    renderPositions();
+    const selected = state.instruments.get(state.selected);
+    if (selected) state.chart?.pushPrice(selected.last);
+  });
+
+  stream.on("market_state", (data) => {
+    applyMarket(data);
+    renderWatchlist();
+  });
+
+  stream.on("instrument_status", (data) => {
+    const instrument = state.instruments.get(data.symbol);
+    if (instrument) {
+      instrument.status = data.status;
+      instrument.halt_reason = data.reason || null;
+      state.instruments.set(data.symbol, instrument);
+    }
+    renderWatchlist();
+    renderTicketQuote();
+    toast(
+      data.status === "HALTED" ? "warn" : "",
+      `${data.symbol} ${data.status === "HALTED" ? "halted" : "resumed"}`,
+      data.reason || "",
+    );
+  });
+
+  stream.on("portfolio", (data) => {
+    state.funds = data.funds;
+    state.positions = data.positions;
+    renderFunds();
+    renderPositions();
+  });
+
+  stream.on("order_update", (order) => {
+    upsertOrder(order);
+    renderOrders();
+  });
+
+  stream.on("fill", (fill) => {
+    toast(
+      fill.side === "BUY" ? "up" : "down",
+      `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol}`,
+      `Filled at ${inr(fill.price)}. Charges ${inr(fill.fees)}.`,
+    );
+    loadOrders();
+  });
+
+  stream.on("news", (item) => {
+    state.news.unshift(item);
+    state.unreadNews += 1;
+    renderNews();
+    toast("warn", item.kind === "RUMOUR" ? "Rumour" : "News", item.headline);
+    if ((item.symbols || []).includes(state.selected)) loadCandles();
+  });
+
+  stream.on("news_retracted", ({ id }) => {
+    const item = state.news.find((n) => n.id === id);
+    if (item) { item.retracted = true; renderNews(); }
+  });
+
+  stream.on("announcement", (data) => {
+    showBanner(data.message, data.severity || "info");
+    toast(data.severity === "critical" ? "down" : "warn", "Announcement", data.message);
+  });
+
+  stream.on("leaderboard", (data) => {
+    if (data.blackout) {
+      state.leaderboard = { ...state.leaderboard, blackout: true, rows: [] };
+    } else {
+      state.leaderboard = {
+        ...state.leaderboard,
+        blackout: false,
+        rows: data.rows.map((row) => ({ ...row, is_you: row.team_id === state.me.team.id })),
+      };
+    }
+    renderLeaderboard();
+  });
+
+  stream.on("margin_warning", (data) => {
+    toast("warn", "Margin warning", data.message);
+    flashFunds("warn");
+  });
+  stream.on("margin_call", (data) => {
+    toast("down", "Margin call", data.message);
+    flashFunds("danger");
+    loadOrders();
+  });
+  stream.on("busted", (data) => {
+    toast("down", "Out of the competition", data.message);
+    showBanner(data.message, "critical");
+    updateTicketAvailability();
+  });
+}
+
+function applyMarket(market) {
+  state.market = market;
+  const stateEl = el("marketState");
+  stateEl.textContent = STATE_TEXT[market.state] || market.state;
+  stateEl.className = `state ${market.state}`;
+  el("dayNo").textContent = market.day_no ? `Day ${market.day_no}/${market.total_days}` : "Not started";
+  if (market.banner) showBanner(market.banner, market.banner_severity);
+  else hideBanner();
+  if (market.index) renderIndex(market.index);
+  updateTicketAvailability();
+}
+
+function renderIndex(index) {
+  el("indexName").textContent = index.name;
+  el("indexValue").textContent = inr(index.value);
+  const change = el("indexChange");
+  if (index.change_pct !== undefined) {
+    change.textContent = pct(index.change_pct);
+    change.className = `v ${signClass(index.change_pct)}`;
+  }
+}
+
+/* ------------------------------------------------------------------ banners */
+
+function showBanner(message, severity = "info") {
+  const banner = el("banner");
+  banner.textContent = message;
+  banner.dataset.severity = severity;
+  banner.hidden = false;
+  el("app").classList.add("has-banner");
+}
+
+function hideBanner() {
+  el("banner").hidden = true;
+  el("app").classList.remove("has-banner");
+}
+
+/* --------------------------------------------------------------- watchlist */
+
+function sortedInstruments() {
+  const rows = [...state.instruments.values()];
+  const { key, dir } = state.sort;
+  const filtered = state.filter
+    ? rows.filter((r) => r.symbol.includes(state.filter) || r.name.toUpperCase().includes(state.filter))
+    : rows;
+  return filtered.sort((a, b) => {
+    if (key === "symbol") return dir * a.symbol.localeCompare(b.symbol);
+    return dir * (Number(a[key]) - Number(b[key]));
+  });
+}
+
+function renderWatchlist() {
+  const body = el("watchBody");
+  const rows = sortedInstruments();
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="4"><div class="empty">No stocks match "${escapeHtml(state.filter)}".</div></td></tr>`;
+    return;
+  }
+
+  const previous = new Map();
+  body.querySelectorAll("tr[data-symbol]").forEach((tr) => previous.set(tr.dataset.symbol, tr.dataset.last));
+
+  body.innerHTML = rows.map((row) => {
+    const cls = signClass(row.change_pct);
+    const badge = statusBadge(row);
+    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" aria-selected="${row.symbol === state.selected}">
+      <td><div class="sym">${row.symbol}${badge}</div><div class="co">${escapeHtml(row.name)}</div></td>
+      <td class="num price">${inr(row.last)}</td>
+      <td class="num ${cls}">${pct(row.change_pct)}</td>
+    </tr>`;
+  }).join("");
+
+  body.querySelectorAll("tr[data-symbol]").forEach((tr) => {
+    const symbol = tr.dataset.symbol;
+    const before = previous.get(symbol);
+    if (before !== undefined && before !== tr.dataset.last) {
+      const cell = tr.querySelector(".price");
+      cell.classList.add(Number(tr.dataset.last) > Number(before) ? "tick-up" : "tick-down");
+      setTimeout(() => cell.classList.remove("tick-up", "tick-down"), 600);
+    }
+    tr.addEventListener("click", () => select(symbol));
+  });
+}
+
+function statusBadge(row) {
+  if (row.status === "HALTED") return ' <span class="pill warn">Halted</span>';
+  if (row.status === "SUSPENDED") return ' <span class="pill">Suspended</span>';
+  if (row.status === "UPPER_CIRCUIT") return ' <span class="pill up">UC</span>';
+  if (row.status === "LOWER_CIRCUIT") return ' <span class="pill down">LC</span>';
+  return "";
+}
+
+async function select(symbol) {
+  state.selected = symbol;
+  renderWatchlist();
+  renderTicketQuote();
+  await loadCandles();
+  if (window.innerWidth <= 780) showPane("centre");
+}
+
+/* ------------------------------------------------------------------ ticket */
+
+function wireTicket() {
+  document.querySelectorAll("[data-side]").forEach((button) => {
+    button.addEventListener("click", () => setSide(button.dataset.side));
+  });
+  document.querySelectorAll("[data-otype]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.ticket.type = button.dataset.otype;
+      document.querySelectorAll("[data-otype]").forEach((b) =>
+        b.setAttribute("aria-pressed", String(b === button)));
+      const needsLimit = state.ticket.type === "LIMIT" || state.ticket.type === "SL_L";
+      const needsTrigger = state.ticket.type.startsWith("SL");
+      el("limitField").hidden = !needsLimit;
+      el("triggerField").hidden = !needsTrigger;
+      schedulePreview();
+    });
+  });
+
+  el("qty").addEventListener("input", schedulePreview);
+  el("limitPrice").addEventListener("input", schedulePreview);
+
+  document.querySelectorAll("[data-qty]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const preset = button.dataset.qty;
+      if (preset === "max" && state.preview) el("qty").value = state.preview.max_qty || 1;
+      else el("qty").value = preset;
+      schedulePreview();
+    });
+  });
+
+  el("orderForm").addEventListener("submit", submitOrder);
+}
+
+function setSide(side) {
+  state.ticket.side = side;
+  document.querySelectorAll("[data-side]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.side === side)));
+  const submit = el("submitOrder");
+  submit.className = `btn block ${side === "BUY" ? "buy" : "sell"}`;
+  schedulePreview();
+}
+
+function renderTicketQuote() {
+  const instrument = state.instruments.get(state.selected);
+  if (!instrument) return;
+  el("ticketSymbol").textContent = instrument.symbol;
+  el("ticketName").textContent = instrument.name;
+  el("bidPrice").textContent = inr(instrument.bid);
+  el("askPrice").textContent = inr(instrument.ask);
+  el("ticketLast").textContent = inr(instrument.last);
+  el("ticketChange").textContent = `${inr(instrument.change, { sign: true })} (${pct(instrument.change_pct)})`;
+  el("ticketChange").className = `v ${signClass(instrument.change_pct)}`;
+  el("dayRange").textContent = `${inr(instrument.low)} - ${inr(instrument.high)}`;
+  el("bandRange").textContent = `${inr(instrument.band_low)} - ${inr(instrument.band_high)}`;
+
+  const position = state.positions.find((p) => p.symbol === instrument.symbol);
+  el("ticketPosition").innerHTML = position
+    ? `<span class="pill ${position.side.toLowerCase()}">${position.side}</span> ${fmtQty(Math.abs(position.qty))} at ${inr(position.avg_cost)}`
+    : '<span class="dim">No position</span>';
+
+  updateTicketAvailability();
+}
+
+let previewTimer = null;
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(runPreview, 180);
+}
+
+async function runPreview() {
+  const quantity = parseInt(el("qty").value, 10);
+  if (!state.selected || !quantity || quantity <= 0) {
+    el("previewBox").innerHTML = '<div class="dim">Enter a quantity to see the cost.</div>';
+    state.preview = null;
+    return;
+  }
+  try {
+    const body = {
+      symbol: state.selected,
+      side: state.ticket.side,
+      qty: quantity,
+      order_type: state.ticket.type === "SL_M" ? "MARKET" : state.ticket.type,
+    };
+    if (state.ticket.type === "LIMIT" || state.ticket.type === "SL_L") {
+      const limit = el("limitPrice").value;
+      if (limit) body.limit_price = limit;
+    }
+    state.preview = await api.post("/api/orders/preview", body);
+    renderPreview();
+  } catch (error) {
+    el("previewBox").innerHTML = `<div class="down">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function renderPreview() {
+  const preview = state.preview;
+  if (!preview) return;
+  const charges = Object.entries(preview.charges.items || {});
+  el("previewBox").innerHTML = `
+    <div class="line"><span class="k">Estimated price</span><span class="v">${inr(preview.estimated_price)}</span></div>
+    ${Number(preview.slippage_pct) !== 0
+      ? `<div class="line"><span class="k">Slippage</span><span class="v">${pct(preview.slippage_pct)}</span></div>` : ""}
+    <div class="line"><span class="k">Value</span><span class="v">${inr(preview.gross)}</span></div>
+    ${charges.length ? `<details>
+      <summary>Charges ${inr(preview.charges.total)}</summary>
+      ${charges.map(([k, v]) => `<div class="line"><span class="k">${escapeHtml(k.replace(/_/g, " "))}</span><span class="v">${inr(v)}</span></div>`).join("")}
+    </details>` : ""}
+    ${Number(preview.margin_locked) > 0
+      ? `<div class="line"><span class="k">Margin locked</span><span class="v">${inr(preview.margin_locked)}</span></div>` : ""}
+    <div class="line total ${preview.affordable ? "" : "bad"}">
+      <span class="k">Available after</span><span class="v">${inr(preview.available_after)}</span>
+    </div>
+    ${preview.affordable ? "" : '<div class="down" style="font-size:11px">Not enough available funds for this order.</div>'}
+  `;
+  updateTicketAvailability();
+}
+
+function updateTicketAvailability() {
+  const submit = el("submitOrder");
+  const instrument = state.instruments.get(state.selected);
+  const marketState = state.market?.state;
+  const busted = state.me?.team?.status === "BUSTED";
+
+  let reason = "";
+  if (!state.connected) reason = "Reconnecting to the exchange...";
+  else if (state.degraded && !instrument) reason = "Waiting for prices...";
+  else if (busted) reason = "Your team is out of the competition";
+  else if (marketState === "CLOSED") reason = "Market closed";
+  else if (marketState === "FROZEN") reason = "Market frozen by the organisers";
+  else if (marketState === "HALTED") reason = "Trading halted";
+  else if (marketState === "FINAL") reason = "The competition has ended";
+  else if (marketState === "PRE_OPEN" && state.ticket.type === "MARKET") reason = "Pre-open: limit orders only";
+  else if (instrument?.status === "HALTED") reason = `${instrument.symbol} is halted`;
+  else if (instrument?.status === "SUSPENDED") reason = `${instrument.symbol} is suspended`;
+
+  submit.disabled = Boolean(reason);
+  submit.textContent = reason || `${state.ticket.side} ${state.selected || ""}`;
+  el("ticketNote").textContent = reason;
+}
+
+async function submitOrder(event) {
+  event.preventDefault();
+  const submit = el("submitOrder");
+  const quantity = parseInt(el("qty").value, 10);
+  if (!quantity || quantity <= 0) return;
+
+  const body = {
+    symbol: state.selected,
+    side: state.ticket.side,
+    order_type: state.ticket.type,
+    qty: quantity,
+    // A fresh identifier per submission. A retry of the same tap reuses it, so
+    // a flaky connection cannot turn one order into two.
+    client_order_id: `${state.me.team.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  };
+  const limit = el("limitPrice").value;
+  const trigger = el("triggerPrice").value;
+  if ((state.ticket.type === "LIMIT" || state.ticket.type === "SL_L") && limit) body.limit_price = limit;
+  if (state.ticket.type.startsWith("SL") && trigger) body.trigger_price = trigger;
+
+  submit.disabled = true;
+  submit.textContent = "Sending...";
+  try {
+    const order = await api.post("/api/orders", body);
+    upsertOrder(order);
+    renderOrders();
+    if (order.status === "REJECTED") {
+      toast("down", "Order rejected", order.reason || "");
+    } else if (order.status === "FILLED") {
+      toast("up", `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol}`, `Filled at ${inr(order.avg_price)}`);
+    } else {
+      toast("", "Order placed", `${order.type} resting at ${inr(order.limit_price || order.trigger_price)}`);
+    }
+    await Promise.all([loadPortfolio(), runPreview()]);
+  } catch (error) {
+    toast("down", "Could not place the order", error.message);
+  } finally {
+    updateTicketAvailability();
+  }
+}
+
+/* ---------------------------------------------------------------- portfolio */
+
+function renderFunds() {
+  if (!state.funds) return;
+  const funds = state.funds;
+  el("hdrEquity").textContent = inr(funds.equity);
+  el("hdrAvailable").textContent = inr(funds.available);
+  const pnl = state.pnl;
+  if (pnl) {
+    el("hdrPnl").textContent = `${inr(pnl.total, { sign: true })} (${pct(pnl.total_pct)})`;
+    el("hdrPnl").className = `v ${signClass(pnl.total)}`;
+  }
+
+  el("fundsBox").innerHTML = `
+    <dl class="kv">
+      <dt>Account value</dt><dd class="big">${inr(funds.equity)}</dd>
+      <dt>Cash</dt><dd>${inr(funds.cash)}</dd>
+      <dt>Holdings</dt><dd>${inr(funds.long_mv)}</dd>
+      <dt>Short exposure</dt><dd>${inr(funds.short_mv)}</dd>
+      <dt>Margin locked</dt><dd>${inr(funds.margin_required)}</dd>
+      <dt>Available to trade</dt><dd class="big ${Number(funds.available) <= 0 ? "down" : ""}">${inr(funds.available)}</dd>
+      <dt>Unrealised P&amp;L</dt><dd class="${signClass(funds.unrealised_pnl)}">${inr(funds.unrealised_pnl, { sign: true })}</dd>
+      <dt>Realised P&amp;L</dt><dd class="${signClass(funds.realised_pnl)}">${inr(funds.realised_pnl, { sign: true })}</dd>
+    </dl>
+    ${renderLeverageGauge(funds)}
+  `;
+}
+
+function renderLeverageGauge(funds) {
+  const maxLeverage = Number(state.limits?.max_leverage || 5);
+  const leverage = Number(funds.leverage || 0);
+  const used = Math.min(100, (leverage / maxLeverage) * 100);
+  const distance = funds.distance_to_call_pct;
+
+  let tone = "";
+  if (funds.margin_state === "WARNING") tone = "warn";
+  if (funds.margin_state === "CALL" || funds.margin_state === "BUST") tone = "danger";
+
+  return `
+    <div style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <span class="label">Leverage</span>
+        <span class="mono" style="flex:0">${leverage.toFixed(2)}x of ${maxLeverage}x</span>
+      </div>
+      <div class="meter ${tone}"><span style="width:${used}%"></span></div>
+      ${distance !== null && distance !== undefined
+        ? `<div class="muted" style="margin-top:6px;font-size:11.5px">
+             Your shorts can move <b class="${Number(distance) < 3 ? "down" : ""}">${pct(distance, { sign: false })}</b>
+             against you before the exchange covers them.
+           </div>`
+        : '<div class="dim" style="margin-top:6px;font-size:11.5px">No short positions, so no margin risk.</div>'}
+    </div>`;
+}
+
+function flashFunds(tone) {
+  const box = el("fundsBox");
+  box.style.transition = "background 0.2s";
+  box.style.background = tone === "danger" ? "var(--down-bg)" : "var(--warn-bg)";
+  setTimeout(() => { box.style.background = ""; }, 1400);
+}
+
+function renderPositions() {
+  const body = el("positionsBody");
+  if (!state.positions.length) {
+    body.innerHTML = '<tr><td colspan="6"><div class="empty">No open positions. Pick a stock and place your first trade.</div></td></tr>';
+    el("positionsCount").textContent = "";
+    return;
+  }
+  el("positionsCount").textContent = state.positions.length;
+
+  body.innerHTML = state.positions.map((position) => {
+    const live = state.instruments.get(position.symbol);
+    const last = live ? live.last : position.last;
+    return `<tr data-symbol="${position.symbol}">
+      <td><div class="sym">${position.symbol}</div>
+          <span class="pill ${position.side.toLowerCase()}">${position.side}</span></td>
+      <td class="num">${fmtQty(Math.abs(position.qty))}</td>
+      <td class="num">${inr(position.avg_cost)}</td>
+      <td class="num">${inr(last)}</td>
+      <td class="num ${signClass(position.unrealised_pnl)}">${inr(position.unrealised_pnl, { sign: true })}<br>
+          <span style="font-size:10px">${pct(position.unrealised_pct)}</span></td>
+      <td class="num"><button class="btn sm ghost" data-close="${position.symbol}" data-qty="${Math.abs(position.qty)}"
+          data-side="${position.qty > 0 ? "SELL" : "BUY"}">Close</button></td>
+    </tr>`;
+  }).join("");
+
+  body.querySelectorAll("[data-close]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      select(button.dataset.close);
+      setSide(button.dataset.side);
+      el("qty").value = button.dataset.qty;
+      document.querySelector('[data-otype="MARKET"]').click();
+      schedulePreview();
+      if (window.innerWidth <= 780) showPane("centre");
+    });
+  });
+  body.querySelectorAll("tr[data-symbol]").forEach((tr) => {
+    tr.addEventListener("click", () => select(tr.dataset.symbol));
+  });
+}
+
+function upsertOrder(order) {
+  const index = state.orders.findIndex((o) => o.id === order.id);
+  if (index >= 0) state.orders[index] = { ...state.orders[index], ...order };
+  else state.orders.unshift(order);
+}
+
+function renderOrders() {
+  const body = el("ordersBody");
+  const open = state.orders.filter((o) => o.status === "PENDING" || o.status === "TRIGGERED");
+  el("ordersCount").textContent = open.length || "";
+
+  if (!state.orders.length) {
+    body.innerHTML = '<tr><td colspan="5"><div class="empty">No orders yet.</div></td></tr>';
+    return;
+  }
+
+  body.innerHTML = state.orders.slice(0, 100).map((order) => {
+    const isOpen = order.status === "PENDING" || order.status === "TRIGGERED";
+    const price = order.avg_price || order.limit_price || order.trigger_price;
+    const tone = order.status === "FILLED" ? "up" : order.status === "REJECTED" ? "down" : "";
+    return `<tr>
+      <td><div class="sym">${order.symbol}</div>
+          <span class="pill ${order.side === "BUY" ? "up" : "down"}">${order.side}</span>
+          ${order.tag !== "NORMAL" ? `<span class="pill warn">${order.tag}</span>` : ""}</td>
+      <td class="num">${fmtQty(order.qty)}${order.filled_qty && order.filled_qty < order.qty ? `<br><span class="dim" style="font-size:10px">${order.filled_qty} done</span>` : ""}</td>
+      <td class="num">${price ? inr(price) : "-"}<br><span class="dim" style="font-size:10px">${order.type}</span></td>
+      <td><span class="pill ${tone}">${order.status}</span>
+          ${order.reason ? `<div class="dim" style="font-size:10px;white-space:normal;max-width:170px">${escapeHtml(order.reason)}</div>` : ""}</td>
+      <td class="num">${isOpen ? `<button class="btn sm ghost" data-cancel="${order.id}">Cancel</button>` : `<span class="dim" style="font-size:10px">${shortTime(order.created_at)}</span>`}</td>
+    </tr>`;
+  }).join("");
+
+  body.querySelectorAll("[data-cancel]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        const order = await api.del(`/api/orders/${button.dataset.cancel}`);
+        upsertOrder(order);
+        renderOrders();
+        toast("", "Order cancelled", `${order.symbol} ${order.side}`);
+      } catch (error) {
+        toast("down", "Could not cancel", error.message);
+        button.disabled = false;
+      }
+    });
+  });
+}
+
+/* --------------------------------------------------------------------- news */
+
+function renderNews() {
+  const box = el("newsList");
+  if (!state.news.length) {
+    box.innerHTML = '<div class="empty">No news yet. Headlines appear here as they break.</div>';
+    return;
+  }
+  el("newsCount").textContent = state.unreadNews || "";
+
+  box.innerHTML = state.news.slice(0, 80).map((item, index) => `
+    <div class="news-item ${item.retracted ? "retracted" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
+      <div class="top">
+        <span class="pill ${item.kind === "RUMOUR" ? "warn" : item.kind === "RESULTS" ? "accent" : ""}">${item.kind}</span>
+        ${item.retracted ? '<span class="pill down">Retracted</span>' : ""}
+        <span class="time">${shortTime(item.published_at)}</span>
+      </div>
+      <div class="headline">${escapeHtml(item.headline)}</div>
+      <div class="body">${escapeHtml(item.body || "")}</div>
+      ${(item.symbols || []).length
+        ? `<div class="tags">${item.symbols.map((s) => `<span class="pill accent" data-sym="${s}">${s}</span>`).join("")}</div>`
+        : ""}
+    </div>`).join("");
+
+  box.querySelectorAll(".news-item").forEach((node) => {
+    node.addEventListener("click", () => node.classList.toggle("open"));
+  });
+  box.querySelectorAll("[data-sym]").forEach((tag) => {
+    tag.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (state.instruments.has(tag.dataset.sym)) select(tag.dataset.sym);
+    });
+  });
+}
+
+/* -------------------------------------------------------------- leaderboard */
+
+function renderLeaderboard() {
+  const box = el("leaderList");
+  const board = state.leaderboard;
+
+  if (board.blackout) {
+    box.innerHTML = `<div class="empty">
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px">Leaderboard blackout</div>
+      Standings are hidden for the closing minutes. Your own position is still shown below.
+    </div>${board.you ? youRow(board.you) : ""}`;
+    return;
+  }
+
+  if (!board.rows?.length) {
+    box.innerHTML = '<div class="empty">The board appears once trading starts.</div>';
+    return;
+  }
+
+  box.innerHTML = `
+    <table class="grid">
+      <thead><tr><th style="width:34px">#</th><th>Team</th><th class="num">Account value</th></tr></thead>
+      <tbody>
+        ${board.rows.map((row) => `
+          <tr ${row.is_you ? 'aria-selected="true"' : ""}>
+            <td class="num dim">${row.rank}</td>
+            <td>${escapeHtml(row.team)}${row.is_you ? ' <span class="pill accent">You</span>' : ""}
+                ${row.status === "BUSTED" ? ' <span class="pill down">Out</span>' : ""}</td>
+            <td class="num">${inr(row.equity)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+    ${board.you && !board.rows.some((r) => r.is_you) ? youRow(board.you) : ""}`;
+}
+
+function youRow(you) {
+  return `<div style="border-top:1px solid var(--line);padding:9px 10px;display:flex;justify-content:space-between;align-items:center;background:var(--accent-ghost)">
+    <span><b>${you.rank}</b> &middot; ${escapeHtml(you.team)} <span class="pill accent">You</span></span>
+    <span class="mono">${inr(you.equity)}</span>
+  </div>`;
+}
+
+/* ---------------------------------------------------------------- chrome UI */
+
+function wireTabs() {
+  document.querySelectorAll("#rightTabs .tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll("#rightTabs .tab").forEach((t) =>
+        t.setAttribute("aria-selected", String(t === tab)));
+      document.querySelectorAll("[data-pane]").forEach((pane) => {
+        pane.hidden = pane.dataset.pane !== tab.dataset.tab;
+      });
+      if (tab.dataset.tab === "news") {
+        state.unreadNews = 0;
+        el("newsCount").textContent = "";
+      }
+    });
+  });
+}
+
+function wireMobileNav() {
+  document.querySelectorAll(".mobile-nav button").forEach((button) => {
+    button.addEventListener("click", () => showPane(button.dataset.pane, button.dataset.tab));
+  });
+}
+
+function showPane(pane, tab) {
+  document.querySelectorAll(".mobile-nav button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.pane === pane && (!tab || b.dataset.tab === tab))));
+  document.querySelectorAll(".col").forEach((col) => {
+    col.classList.toggle("mobile-active", col.dataset.col === pane);
+  });
+  if (tab) document.querySelector(`#rightTabs .tab[data-tab="${tab}"]`)?.click();
+  if (pane === "centre") state.chart?.draw();
+}
+
+/* ------------------------------------------------------------------- clock */
+
+function tickClock() {
+  const market = state.market;
+  const countdown = el("countdown");
+  if (!market || !market.ends_at) {
+    countdown.textContent = "--:--";
+    return;
+  }
+  const remaining = (new Date(market.ends_at).getTime() - Date.now()) / 1000;
+  countdown.textContent = duration(remaining);
+  countdown.className = `countdown ${remaining < 60 && market.state === "OPEN" ? "down" : ""}`;
+}
+
+/* ------------------------------------------------------------------- toasts */
+
+let toastId = 0;
+function toast(tone, title, message) {
+  const host = el("toasts");
+  const node = document.createElement("div");
+  node.className = `toast ${tone}`;
+  node.innerHTML = `<div class="title">${escapeHtml(title)}</div>${message ? `<div class="msg">${escapeHtml(message)}</div>` : ""}`;
+  const id = ++toastId;
+  node.dataset.id = id;
+  host.appendChild(node);
+  setTimeout(() => node.remove(), tone === "down" ? 9000 : 5000);
+  while (host.children.length > 5) host.firstChild.remove();
+}
+
+boot();

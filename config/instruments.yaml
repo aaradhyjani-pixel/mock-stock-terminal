@@ -1,0 +1,241 @@
+# The basket: 25 NSE names across eight sectors.
+#
+# IMPORTANT: refresh start_price from the live market a day or two before the
+# event. The prices below are placeholders so the system runs out of the box;
+# they are not current quotes. `scripts/seed.py --prices prices.csv` will take a
+# two-column CSV of symbol,price if you would rather not edit this file.
+#
+# Tuning guide:
+#   spread_bps        10 large cap, 25 mid, 50 small. Wider spread punishes churn.
+#   daily_vol_pct     expected one-day standard deviation. 1.2 quiet, 2.5 lively.
+#   liquidity         rupees tradable in one slice before slippage starts.
+#   band_pct          circuit limit measured from the day's reference price.
+#   index_weight      relative weight in the CLUB 50 index.
+
+instruments:
+  # ---- Banking and financials
+  - symbol: HDFCBANK
+    name: HDFC Bank Ltd
+    sector: Banking
+    start_price: "1640.10"
+    spread_bps: "10"
+    daily_vol_pct: "1.2"
+    liquidity_notional: "20000000"
+    index_weight: "13"
+  - symbol: ICICIBANK
+    name: ICICI Bank Ltd
+    sector: Banking
+    start_price: "1128.45"
+    spread_bps: "10"
+    daily_vol_pct: "1.3"
+    liquidity_notional: "20000000"
+    index_weight: "9"
+  - symbol: SBIN
+    name: State Bank of India
+    sector: Banking
+    start_price: "812.60"
+    spread_bps: "12"
+    daily_vol_pct: "1.6"
+    liquidity_notional: "15000000"
+    index_weight: "4"
+  - symbol: KOTAKBANK
+    name: Kotak Mahindra Bank Ltd
+    sector: Banking
+    start_price: "1745.30"
+    spread_bps: "12"
+    daily_vol_pct: "1.4"
+    liquidity_notional: "12000000"
+    index_weight: "4"
+  - symbol: BAJFINANCE
+    name: Bajaj Finance Ltd
+    sector: Financials
+    start_price: "6890.00"
+    spread_bps: "15"
+    daily_vol_pct: "1.9"
+    liquidity_notional: "10000000"
+    index_weight: "4"
+
+  # ---- Information technology
+  - symbol: TCS
+    name: Tata Consultancy Services Ltd
+    sector: IT
+    start_price: "4102.75"
+    spread_bps: "10"
+    daily_vol_pct: "1.3"
+    liquidity_notional: "18000000"
+    index_weight: "8"
+  - symbol: INFY
+    name: Infosys Ltd
+    sector: IT
+    start_price: "1498.60"
+    spread_bps: "10"
+    daily_vol_pct: "1.5"
+    liquidity_notional: "18000000"
+    index_weight: "7"
+  - symbol: HCLTECH
+    name: HCL Technologies Ltd
+    sector: IT
+    start_price: "1592.20"
+    spread_bps: "15"
+    daily_vol_pct: "1.6"
+    liquidity_notional: "10000000"
+    index_weight: "3"
+  - symbol: WIPRO
+    name: Wipro Ltd
+    sector: IT
+    start_price: "298.15"
+    spread_bps: "20"
+    daily_vol_pct: "1.8"
+    liquidity_notional: "8000000"
+    index_weight: "2"
+
+  # ---- Energy
+  - symbol: RELIANCE
+    name: Reliance Industries Ltd
+    sector: Energy
+    start_price: "2512.35"
+    spread_bps: "10"
+    daily_vol_pct: "1.4"
+    liquidity_notional: "25000000"
+    index_weight: "12"
+  - symbol: ONGC
+    name: Oil and Natural Gas Corporation Ltd
+    sector: Energy
+    start_price: "246.80"
+    spread_bps: "25"
+    daily_vol_pct: "2.0"
+    liquidity_notional: "8000000"
+    index_weight: "2"
+  - symbol: NTPC
+    name: NTPC Ltd
+    sector: Energy
+    start_price: "358.90"
+    spread_bps: "20"
+    daily_vol_pct: "1.7"
+    liquidity_notional: "9000000"
+    index_weight: "3"
+
+  # ---- Automobiles
+  - symbol: TATAMOTORS
+    name: Tata Motors Ltd
+    sector: Auto
+    start_price: "918.25"
+    spread_bps: "20"
+    daily_vol_pct: "2.2"
+    liquidity_notional: "10000000"
+    index_weight: "3"
+  - symbol: MARUTI
+    name: Maruti Suzuki India Ltd
+    sector: Auto
+    start_price: "11240.00"
+    spread_bps: "15"
+    daily_vol_pct: "1.6"
+    liquidity_notional: "9000000"
+    index_weight: "3"
+  - symbol: EICHERMOT
+    name: Eicher Motors Ltd
+    sector: Auto
+    start_price: "4685.50"
+    spread_bps: "25"
+    daily_vol_pct: "2.0"
+    liquidity_notional: "6000000"
+    index_weight: "2"
+
+  # ---- Consumer goods
+  - symbol: HINDUNILVR
+    name: Hindustan Unilever Ltd
+    sector: FMCG
+    start_price: "2480.15"
+    spread_bps: "12"
+    daily_vol_pct: "1.1"
+    liquidity_notional: "12000000"
+    index_weight: "5"
+  - symbol: ITC
+    name: ITC Ltd
+    sector: FMCG
+    start_price: "462.30"
+    spread_bps: "12"
+    daily_vol_pct: "1.2"
+    liquidity_notional: "15000000"
+    index_weight: "5"
+  - symbol: NESTLEIND
+    name: Nestle India Ltd
+    sector: FMCG
+    start_price: "2246.70"
+    spread_bps: "25"
+    daily_vol_pct: "1.2"
+    liquidity_notional: "5000000"
+    index_weight: "2"
+
+  # ---- Pharmaceuticals
+  - symbol: SUNPHARMA
+    name: Sun Pharmaceutical Industries Ltd
+    sector: Pharma
+    start_price: "1784.40"
+    spread_bps: "18"
+    daily_vol_pct: "1.6"
+    liquidity_notional: "9000000"
+    index_weight: "3"
+  - symbol: CIPLA
+    name: Cipla Ltd
+    sector: Pharma
+    start_price: "1512.85"
+    spread_bps: "25"
+    daily_vol_pct: "1.7"
+    liquidity_notional: "6000000"
+    index_weight: "2"
+
+  # ---- Metals
+  - symbol: TATASTEEL
+    name: Tata Steel Ltd
+    sector: Metals
+    start_price: "148.95"
+    spread_bps: "25"
+    daily_vol_pct: "2.4"
+    liquidity_notional: "8000000"
+    index_weight: "2"
+  - symbol: JSWSTEEL
+    name: JSW Steel Ltd
+    sector: Metals
+    start_price: "926.40"
+    spread_bps: "30"
+    daily_vol_pct: "2.3"
+    liquidity_notional: "6000000"
+    index_weight: "2"
+
+  # ---- Infrastructure
+  - symbol: LT
+    name: Larsen and Toubro Ltd
+    sector: Infrastructure
+    start_price: "3585.60"
+    spread_bps: "15"
+    daily_vol_pct: "1.6"
+    liquidity_notional: "10000000"
+    index_weight: "4"
+  - symbol: ULTRACEMCO
+    name: UltraTech Cement Ltd
+    sector: Infrastructure
+    start_price: "10842.00"
+    spread_bps: "30"
+    daily_vol_pct: "1.7"
+    liquidity_notional: "5000000"
+    index_weight: "2"
+
+  # ---- Telecom and conglomerates
+  - symbol: BHARTIARTL
+    name: Bharti Airtel Ltd
+    sector: Telecom
+    start_price: "1596.25"
+    spread_bps: "12"
+    daily_vol_pct: "1.5"
+    liquidity_notional: "12000000"
+    index_weight: "6"
+  - symbol: ADANIENT
+    name: Adani Enterprises Ltd
+    sector: Conglomerate
+    start_price: "2870.00"
+    spread_bps: "50"
+    daily_vol_pct: "3.2"
+    liquidity_notional: "4000000"
+    band_pct: "20"
+    index_weight: "2"

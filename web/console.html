@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operator Console</title>
+  <link rel="stylesheet" href="/static/css/terminal.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23f5a524'/><circle cx='16' cy='16' r='6' fill='%23241a04'/></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="mark" style="background:linear-gradient(135deg,#f5a524,#a86a00);color:#241a04">O</span> Console</div>
+
+  <div class="clock">
+    <span class="state" id="marketState">-</span>
+    <span class="countdown" id="countdown">--:--</span>
+    <span class="label" id="dayNo"></span>
+  </div>
+
+  <div class="stat hide-sm">
+    <span class="k">CLUB 50</span>
+    <span class="v" id="indexValue">-</span>
+  </div>
+
+  <div class="muted hide-md" id="marketBanner" style="font-size:11.5px;max-width:320px;overflow:hidden;text-overflow:ellipsis"></div>
+
+  <div class="spacer"></div>
+
+  <div class="stat hide-sm" style="text-align:right">
+    <span class="k" id="operatorRole"></span>
+    <span class="v" style="font-family:var(--sans);font-size:12px" id="operatorName"></span>
+  </div>
+  <button class="iconbtn" id="refreshBtn">Refresh</button>
+  <button class="iconbtn" id="themeToggle">Theme</button>
+  <button class="iconbtn" id="logout">Sign out</button>
+</header>
+
+<div class="offline" id="offline" hidden>Reconnecting to the exchange.</div>
+
+<main class="console-grid">
+
+  <!-- ------------------------------------------------------ market control -->
+  <section class="panel">
+    <div class="panel-head"><h2>Market control</h2></div>
+    <div class="panel-body pad" style="gap:9px;display:flex;flex-direction:column">
+      <div class="row">
+        <button class="btn" id="preOpenBtn">Pre-open next day</button>
+        <button class="btn primary" id="openBtn">Open</button>
+        <button class="btn" id="closeBtn">Close day</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="haltBtn">Halt market</button>
+        <button class="btn" id="blackoutBtn">Start blackout</button>
+      </div>
+
+      <form id="broadcastForm" style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+        <label class="label" for="broadcastMessage">Broadcast to every terminal</label>
+        <input type="text" id="broadcastMessage" placeholder="Day 2 opens in two minutes." maxlength="300">
+        <div class="row">
+          <select id="broadcastSeverity">
+            <option value="info">Information</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+          </select>
+          <button class="btn" type="submit">Send</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- danger zone -->
+  <section class="panel danger-zone">
+    <div class="panel-head"><h2>Incident controls</h2></div>
+    <div class="panel-body pad" style="gap:9px;display:flex;flex-direction:column">
+      <p class="muted" style="margin:0;font-size:11.5px">
+        Freeze first, diagnose second. Freezing stops trading and the clock, so no team
+        loses time and nobody with a working connection gains an edge.
+      </p>
+      <input type="text" id="freezeMessage" placeholder="Message shown to participants"
+             value="Market frozen by the organisers. Please hold.">
+      <button class="btn danger" id="freezeBtn">Freeze everything</button>
+      <button class="btn primary" id="resumeBtn" hidden>Resume from where it stopped</button>
+      <hr style="border:0;border-top:1px solid var(--line);margin:2px 0">
+      <button class="btn danger" id="finaliseBtn">End the competition and lock results</button>
+      <button class="btn danger" id="resetBtn">Reset the competition</button>
+      <p class="dim" style="margin:0;font-size:11px">
+        Reset wipes every trade and returns all teams to their opening balance, for use
+        after the practice session. Teams, members and the audit log are kept, so nobody
+        needs a new card.
+      </p>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- risk watch -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Margin watch</h2>
+      <span class="badge pill down" id="riskCount"></span>
+    </div>
+    <div class="panel-body" id="riskBox"></div>
+  </section>
+
+  <!-- ----------------------------------------------------------- the field -->
+  <section class="panel">
+    <div class="panel-head"><h2>The field</h2></div>
+    <div class="panel-body pad" id="fieldBox"></div>
+  </section>
+
+  <!-- ---------------------------------------------------------- price desk -->
+  <section class="panel wide">
+    <div class="panel-head"><h2>Price desk</h2></div>
+    <div class="panel-body" style="display:grid;grid-template-columns:minmax(280px,1fr) minmax(300px,340px);gap:0">
+      <div style="overflow:auto;border-right:1px solid var(--line)">
+        <table class="grid">
+          <thead><tr><th>Stock</th><th class="num">Last</th><th class="num">Change</th><th>Status</th><th></th></tr></thead>
+          <tbody id="priceBody"></tbody>
+        </table>
+      </div>
+
+      <div style="padding:10px;display:flex;flex-direction:column;gap:12px;overflow:auto">
+        <form id="moveForm" style="display:flex;flex-direction:column;gap:6px">
+          <span class="label">Move a price (the default control)</span>
+          <p class="dim" style="margin:0;font-size:11px">
+            The engine walks the price to the target over the duration, with noise.
+            No step change, so nothing can be front-run.
+          </p>
+          <select id="moveScope">
+            <option value="symbol">One stock</option>
+            <option value="sector">A sector</option>
+            <option value="market">Whole market</option>
+          </select>
+          <div id="moveSymbolField"><select id="moveSymbol" data-symbols="required"></select></div>
+          <div id="moveSectorField" hidden><select id="moveSector" data-sectors="1"></select></div>
+          <div class="row">
+            <div class="field"><label for="movePct">Percent</label>
+              <input type="number" id="movePct" step="0.1" value="3" required></div>
+            <div class="field"><label for="moveSeconds">Over seconds</label>
+              <input type="number" id="moveSeconds" step="10" value="180" min="0"></div>
+          </div>
+          <input type="text" id="moveNote" placeholder="Note for the audit log (optional)">
+          <button class="btn primary" type="submit">Start the move</button>
+        </form>
+
+        <form id="jumpForm" style="display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px">
+          <span class="label">Jump instantly</span>
+          <p class="dim" style="margin:0;font-size:11px">
+            For opening gaps and scripted shocks only. Asks you to type the symbol.
+          </p>
+          <div class="row">
+            <select id="jumpSymbol" data-symbols="required"></select>
+            <input type="number" id="jumpPct" step="0.5" value="-5" placeholder="%" required>
+          </div>
+          <button class="btn danger" type="submit">Jump</button>
+        </form>
+
+        <form id="volForm" style="display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px">
+          <span class="label">Volatility</span>
+          <div class="row">
+            <select id="volSymbol" data-symbols="optional"></select>
+            <input type="number" id="volMultiplier" step="0.5" value="3" placeholder="x" required>
+            <input type="number" id="volSeconds" step="30" value="300" placeholder="secs">
+          </div>
+          <button class="btn" type="submit">Set volatility</button>
+        </form>
+
+        <form id="dividendForm" style="display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px">
+          <span class="label">Corporate actions</span>
+          <p class="dim" style="margin:0;font-size:11px">
+            Both need the market stopped, because they move prices and positions together.
+            Neither changes any team's account value: a dividend shifts value from the
+            share price into cash, and a split only changes the units.
+          </p>
+          <div class="row">
+            <select id="dividendSymbol" data-symbols="required"></select>
+            <input type="number" id="dividendAmount" step="0.05" value="5" placeholder="Rs / share" required>
+          </div>
+          <button class="btn" type="submit">Pay a dividend</button>
+        </form>
+
+        <form id="splitForm" style="display:flex;flex-direction:column;gap:6px">
+          <div class="row">
+            <select id="splitSymbol" data-symbols="required"></select>
+            <input type="number" id="splitRatio" step="0.5" value="2" placeholder="ratio" required>
+          </div>
+          <button class="btn" type="submit">Split the stock</button>
+          <p class="dim" style="margin:0;font-size:11px">
+            2 means 2-for-1: twice the shares at half the price. Resting orders in that
+            stock are cancelled, because a limit at the old price means nothing at the new one.
+          </p>
+        </form>
+
+        <div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px">
+          <span class="label">Halt reason</span>
+          <input type="text" id="haltReason" value="pending an announcement">
+          <button class="btn" id="undoBtn">Undo the last price action</button>
+          <p class="dim" style="margin:0;font-size:11px">
+            Undo restores the price. Fills that happened stand, and you will be told how
+            many there were so the club can decide about an adjustment in the break.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- news desk -->
+  <section class="panel">
+    <div class="panel-head"><h2>News desk</h2></div>
+    <div class="panel-body pad">
+      <form id="newsForm" style="display:flex;flex-direction:column;gap:7px">
+        <input type="text" id="newsHeadline" placeholder="Headline" maxlength="240" required>
+        <textarea id="newsBody" rows="3" placeholder="Two to four sentences of detail."></textarea>
+        <div class="row">
+          <select id="newsKind">
+            <option>NEWS</option><option>RUMOUR</option><option>RESULTS</option>
+            <option>MACRO</option><option>REGULATORY</option><option>ANNOUNCEMENT</option>
+          </select>
+          <select id="newsSentiment">
+            <option value="">Sentiment (your note)</option>
+            <option value="very_positive">Very positive</option>
+            <option value="positive">Positive</option>
+            <option value="uncertain">Uncertain</option>
+            <option value="negative">Negative</option>
+            <option value="very_negative">Very negative</option>
+          </select>
+        </div>
+        <input type="text" id="newsSymbols" placeholder="Tag stocks, comma separated: INFY, TCS">
+        <button class="btn primary" type="submit">Publish now</button>
+        <p class="dim" style="margin:0;font-size:11px">
+          Sentiment is your own note. Participants never see it; working it out is the game.
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Published</h2></div>
+    <div class="panel-body" id="newsHistory"></div>
+  </section>
+
+  <!-- ----------------------------------------------------------- scenarios -->
+  <section class="panel wide">
+    <div class="panel-head"><h2>Scenario player</h2></div>
+    <div class="panel-body pad" id="scenarioBox"></div>
+  </section>
+
+  <!-- --------------------------------------------------------------- teams -->
+  <section class="panel wide">
+    <div class="panel-head"><h2>Teams and standings</h2>
+      <div class="spacer"></div>
+      <span class="dim" style="font-size:11px">Click a team to see their book</span>
+    </div>
+    <div class="panel-body">
+      <table class="grid">
+        <thead><tr>
+          <th style="width:34px">#</th><th>Team</th><th class="num">Account value</th>
+          <th class="num">Short</th><th class="num">Leverage</th><th>Margin</th><th class="num">Orders</th>
+        </tr></thead>
+        <tbody id="teamsBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ exposure -->
+  <section class="panel">
+    <div class="panel-head"><h2>Who holds what</h2></div>
+    <div class="panel-body">
+      <table class="grid">
+        <thead><tr><th>Stock</th><th class="num">Long</th><th class="num">Short</th><th class="num">Turnover</th></tr></thead>
+        <tbody id="exposureBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- blotter -->
+  <section class="panel">
+    <div class="panel-head"><h2>Blotter</h2></div>
+    <div class="panel-body">
+      <table class="grid">
+        <thead><tr><th>Time</th><th>Team</th><th>Stock</th><th>Side</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
+        <tbody id="blotterBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------- health and audit -->
+  <section class="panel">
+    <div class="panel-head"><h2>System health</h2></div>
+    <div class="panel-body pad">
+      <div id="healthBox"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:10px 0">
+      <button class="btn block" id="invariantsBtn">Check the books balance</button>
+      <p class="dim" style="font-size:11px;margin:6px 0 0">
+        Recomputes every team's cash from the ledger and compares. Run it in every break;
+        it takes milliseconds and it is the best evidence the results are sound.
+      </p>
+      <div id="invariantResult" style="margin-top:8px;font-size:12px"></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:10px 0">
+      <span class="label">Export</span>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap">
+        <a class="btn sm" href="/api/admin/export/orders.csv">Orders</a>
+        <a class="btn sm" href="/api/admin/export/fills.csv">Fills</a>
+        <a class="btn sm" href="/api/admin/export/ledger.csv">Ledger</a>
+        <a class="btn sm" href="/api/admin/export/snapshots.csv">Snapshots</a>
+        <a class="btn sm" href="/api/admin/export/audit.csv">Audit</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Adjustments awaiting approval</h2></div>
+    <div class="panel-body" id="adjustmentsBox"></div>
+  </section>
+
+  <section class="panel wide" id="resultsPanel" hidden>
+    <div class="panel-head">
+      <h2>Final results</h2>
+      <div class="spacer"></div>
+      <a class="btn sm" href="/api/admin/results/report-cards.html" target="_blank" rel="noopener">
+        Print report cards
+      </a>
+    </div>
+    <div class="panel-body" id="resultsBox"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Audit log</h2></div>
+    <div class="panel-body" id="auditBox"></div>
+  </section>
+</main>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="module" src="/static/js/console.js"></script>
+</body>
+</html>

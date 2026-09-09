@@ -1,0 +1,99 @@
+# Day 2 script: "The halt".
+#
+# Day 2 introduces the two mechanics that catch people out: a trading halt with
+# a gap on resumption, and a sector-wide move large enough to matter to anyone
+# carrying leverage. Run day 1 first; do not open with this.
+
+name: "Day 2 - The halt"
+day_no: 2
+description: >
+  A macro rally, then Infosys halts pending an announcement and reopens seven
+  per cent lower. Anyone holding a leveraged short in banking gets a scare late
+  in the session. Expect the first margin calls of the competition here.
+
+steps:
+  - at: 0
+    label: "Open"
+    action: open
+
+  - at: 180
+    label: "RBI holds"
+    news:
+      - headline: "RBI holds repo rate at 6.50%, signals room for a cut in December"
+        body: >
+          The Monetary Policy Committee voted to keep the repo rate unchanged
+          while shifting its stance to neutral. Governor's commentary was read
+          as dovish by most desks.
+        kind: MACRO
+        sentiment: positive
+    moves:
+      - sector: Banking
+        pct: "1.8"
+        over_seconds: 300
+      - sector: Financials
+        pct: "2.0"
+        over_seconds: 300
+
+  - at: 600
+    label: "Infosys halted"
+    halt: [INFY]
+    halt_reason: "pending an announcement"
+    news:
+      - headline: "Infosys trading halted pending an announcement"
+        body: >
+          The exchange has halted trading in Infosys at the company's request
+          ahead of a material announcement.
+        kind: ANNOUNCEMENT
+        symbols: [INFY]
+        sentiment: uncertain
+
+  - at: 780
+    label: "Infosys guidance cut"
+    resume: [INFY]
+    news:
+      - headline: "Infosys cuts FY guidance to 1-2%; CFO steps down"
+        body: >
+          Infosys lowered its full-year revenue growth guidance to 1-2 per cent
+          from 3-4 per cent, citing weakness in discretionary spending among
+          BFSI clients. The company also announced that its Chief Financial
+          Officer will step down at the end of the quarter.
+        kind: RESULTS
+        symbols: [INFY]
+        sectors: [IT]
+        sentiment: very_negative
+    moves:
+      - symbol: INFY
+        pct: "-7.0"
+        over_seconds: 0
+      - sector: IT
+        pct: "-2.0"
+        over_seconds: 300
+
+  - at: 1080
+    label: "Banking squeeze"
+    news:
+      - headline: "Foreign funds turn net buyers in financials; block deals reported"
+        body: >
+          Two large block deals in private sector banks were reported in the
+          afternoon session. Desks report short covering across the sector.
+        kind: NEWS
+        sectors: [Banking]
+        sentiment: positive
+    moves:
+      - sector: Banking
+        pct: "3.5"
+        over_seconds: 240
+
+  - at: 1380
+    label: "Volatility bump"
+    announce: "Heavy two-way flow into the close. Watch your margins."
+    severity: warning
+
+  - at: 1440
+    label: "One minute warning"
+    announce: "Day 2 closes in one minute. Unfilled orders will be cancelled."
+    severity: warning
+
+  - at: 1500
+    label: "Close"
+    action: close

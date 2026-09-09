@@ -1,0 +1,106 @@
+# Day 1 script: "Finding your feet".
+#
+# A scenario is a timeline of steps, in seconds from the moment an operator
+# presses play. Everything a step can do is something an operator could also do
+# by hand, so a script is a rehearsal aid rather than a separate system.
+#
+# Write day 1 gently. The first ten minutes of any mock market are spent working
+# out where the buy button is, and a crash during that is just noise.
+
+name: "Day 1 - Finding your feet"
+day_no: 1
+description: >
+  Calm open, a mild IT rally, one rumour that turns out to be false, and a late
+  wobble in metals. Nothing here should bust anyone; the point of day 1 is to get
+  every team a filled trade and a position they care about.
+
+steps:
+  - at: 0
+    label: "Open"
+    action: open
+
+  - at: 120
+    label: "Opening commentary"
+    news:
+      - headline: "Markets open steady; traders watch IT for cues after strong US close"
+        body: >
+          Benchmark indices opened flat with a positive bias. Technology
+          counters are in focus after a strong overnight session on the Nasdaq.
+        kind: MACRO
+        sentiment: mildly_positive
+
+  - at: 300
+    label: "IT rally"
+    news:
+      - headline: "Infosys wins multi-year deal with European bank, size undisclosed"
+        body: >
+          Infosys said it has signed a multi-year digital transformation
+          agreement with a large European lender. The company did not disclose
+          the deal size. Analysts expect a modest earnings impact.
+        kind: NEWS
+        symbols: [INFY]
+        sectors: [IT]
+        sentiment: positive
+    moves:
+      - symbol: INFY
+        pct: "4.0"
+        over_seconds: 240
+      - sector: IT
+        pct: "1.2"
+        over_seconds: 300
+
+  - at: 600
+    label: "Rumour: Tata Motors"
+    news:
+      - headline: "RUMOUR: Tata Motors JLR plant said to face production halt"
+        body: >
+          Unconfirmed reports on social media suggest a production stoppage at a
+          Jaguar Land Rover facility. The company has not commented. Treat
+          unverified reports with caution.
+        kind: RUMOUR
+        symbols: [TATAMOTORS]
+        sentiment: negative
+    moves:
+      - symbol: TATAMOTORS
+        pct: "-3.5"
+        over_seconds: 180
+
+  - at: 900
+    label: "Rumour denied"
+    news:
+      - headline: "Tata Motors denies production halt reports; calls them speculative"
+        body: >
+          In a statement to the exchanges, Tata Motors said reports of a
+          production stoppage are speculative and factually incorrect. All
+          facilities are operating normally.
+        kind: REGULATORY
+        symbols: [TATAMOTORS]
+        sentiment: positive
+    moves:
+      - symbol: TATAMOTORS
+        pct: "3.0"
+        over_seconds: 150
+
+  - at: 1200
+    label: "Metals wobble"
+    news:
+      - headline: "China steel output data disappoints; metal counters under pressure"
+        body: >
+          Weaker than expected industrial output from China has weighed on
+          steel and base metal prices in Asian trade.
+        kind: MACRO
+        sectors: [Metals]
+        sentiment: negative
+    moves:
+      - sector: Metals
+        pct: "-2.5"
+        over_seconds: 240
+
+  - at: 1440
+    label: "One minute warning"
+    announce: "Day 1 closes in one minute. Unfilled orders will be cancelled."
+    severity: warning
+
+  - at: 1500
+    label: "Close"
+    action: close

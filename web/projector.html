@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Market Board</title>
+  <link rel="stylesheet" href="/static/css/terminal.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232dd4a7'/><path d='M7 21l5-6 4 3 5-8 4 5' stroke='%2304110d' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<div class="projector">
+  <div class="ticker">
+    <div class="track" id="ticker"></div>
+  </div>
+
+  <div class="hero">
+    <div>
+      <h1 id="competitionName">Mock Market Championship</h1>
+      <div class="muted" style="font-size:16px;margin-top:4px">
+        <span class="state" id="marketState" style="font-size:16px">-</span>
+        <span id="dayNo"></span>
+        <span id="bannerText" style="margin-left:14px"></span>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="label" id="indexName">CLUB 50</div>
+      <div class="index-value" id="indexValue">-</div>
+      <div class="index-change" id="indexChange">-</div>
+      <div class="label" style="margin-top:8px">Time left</div>
+      <div class="index-change mono" id="countdown">--:--</div>
+    </div>
+  </div>
+
+  <div class="split">
+    <section>
+      <h2 class="label" style="margin-bottom:10px">Standings</h2>
+      <div id="board"></div>
+    </section>
+    <section>
+      <h2 class="label" style="margin-bottom:10px">Latest news</h2>
+      <div id="news"></div>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+/* The big screen.
+ *
+ * Signs in as the projector operator account, which is read-only by design: a
+ * kiosk left unattended in a hall should not be able to change anything, and a
+ * screen that can only read is a screen nobody has to guard.
+ */
+import { opsApi as api } from "/static/js/api.js";
+import { STATE_TEXT, duration, escapeHtml, inr, pct, shortTime, signClass } from "/static/js/format.js";
+import { Stream } from "/static/js/stream.js";
+
+const el = (id) => document.getElementById(id);
+const state = { market: null, quotes: [], board: [], news: [], blackout: false };
+const stream = new Stream("/ws/ops");
+
+async function boot() {
+  try {
+    await api.get("/api/auth/ops/me");
+  } catch {
+    window.location.href = "/console/login";
+    return;
+  }
+  await Promise.all([loadMarket(), loadNews(), loadBoard()]);
+  wire();
+  stream.connect(api.token);
+  setInterval(tick, 250);
+  setInterval(loadNews, 15000);
+}
+
+async function loadMarket() {
+  state.market = await api.get("/api/market");
+  renderMarket();
+  const instruments = await api.get("/api/instruments");
+  state.quotes = instruments.instruments;
+  renderTicker();
+}
+
+async function loadNews() {
+  try {
+    const data = await api.get("/api/admin/news");
+    state.news = data.news.filter((n) => n.published_at);
+    renderNews();
+  } catch { /* ignore */ }
+}
+
+async function loadBoard() {
+  try {
+    const data = await api.get("/api/admin/teams");
+    state.board = data.teams;
+    renderBoard();
+  } catch { /* ignore */ }
+}
+
+function wire() {
+  stream.on("market_state", (data) => { state.market = { ...state.market, ...data }; renderMarket(); });
+  stream.on("quotes", (data) => { state.quotes = data.quotes; renderTicker(); renderIndex(data.index); });
+  stream.on("leaderboard", (data) => {
+    state.blackout = Boolean(data.blackout);
+    if (data.rows?.length) state.board = data.rows.map((r) => ({ ...r, name: r.team }));
+    renderBoard();
+  });
+  stream.on("news", (item) => { state.news.unshift(item); renderNews(); });
+  stream.on("announcement", (data) => { el("bannerText").textContent = data.message; });
+}
+
+function renderMarket() {
+  const market = state.market;
+  el("marketState").textContent = STATE_TEXT[market.state] || market.state;
+  el("marketState").className = `state ${market.state}`;
+  el("dayNo").textContent = market.day_no ? `Day ${market.day_no} of ${market.total_days}` : "";
+  el("bannerText").textContent = market.banner || "";
+  if (market.rules?.competition) el("competitionName").textContent = market.rules.competition;
+  state.blackout = Boolean(market.blackout);
+  renderIndex(market.index);
+}
+
+function renderIndex(index) {
+  if (!index) return;
+  el("indexName").textContent = index.name;
+  el("indexValue").textContent = inr(index.value);
+  if (index.change_pct !== undefined) {
+    el("indexChange").textContent = `${inr(index.change, { sign: true })}  ${pct(index.change_pct)}`;
+    el("indexChange").className = `index-change ${signClass(index.change_pct)}`;
+  }
+}
+
+function renderTicker() {
+  // Doubled so the marquee loops without a visible gap.
+  const cells = state.quotes.map((q) =>
+    `<span><b>${q.symbol}</b> ${inr(q.last)} <span class="${signClass(q.change_pct)}">${pct(q.change_pct)}</span></span>`
+  );
+  el("ticker").innerHTML = cells.concat(cells).join("");
+}
+
+function renderBoard() {
+  if (state.blackout) {
+    el("board").innerHTML = `
+      <div class="blackout">
+        <div class="big">Standings hidden</div>
+        <div class="muted" style="font-size:18px">The final result is revealed at the close.</div>
+      </div>`;
+    return;
+  }
+  const rows = state.board.slice(0, 12);
+  el("board").innerHTML = rows.length
+    ? `<table class="grid">
+        <thead><tr><th>#</th><th>Team</th><th class="num">Account value</th></tr></thead>
+        <tbody>${rows.map((row, index) => `
+          <tr>
+            <td class="rank ${index < 3 ? "top" : ""}">${row.rank}</td>
+            <td>${escapeHtml(row.name || row.team)}
+                ${row.status === "BUSTED" ? '<span class="pill down">Out</span>' : ""}</td>
+            <td class="num">${inr(row.equity)}</td>
+          </tr>`).join("")}</tbody>
+      </table>`
+    : '<div class="empty">The board appears once trading starts.</div>';
+}
+
+function renderNews() {
+  el("news").innerHTML = state.news.slice(0, 6).map((item) => `
+    <div class="news-item ${item.retracted ? "retracted" : ""}">
+      <div class="top">
+        <span class="pill ${item.kind === "RUMOUR" ? "warn" : ""}">${item.kind}</span>
+        ${item.retracted ? '<span class="pill down">Retracted</span>' : ""}
+        <span class="time">${shortTime(item.published_at)}</span>
+      </div>
+      <div class="headline">${escapeHtml(item.headline)}</div>
+      <div class="body">${escapeHtml((item.body || "").slice(0, 240))}</div>
+    </div>`).join("") || '<div class="empty">No news yet.</div>';
+}
+
+function tick() {
+  el("countdown").textContent = state.market?.ends_at
+    ? duration((new Date(state.market.ends_at).getTime() - Date.now()) / 1000)
+    : "--:--";
+}
+
+boot();
+</script>
+</body>
+</html>
