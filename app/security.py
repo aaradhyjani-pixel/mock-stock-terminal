@@ -222,9 +222,11 @@ def require_roles(*roles: OperatorRole):
 
     async def guard(identity: OperatorIdentity = Depends(current_operator)) -> OperatorIdentity:
         if identity.role not in allowed:
+            names = ", ".join(sorted(r.value.replace("_", " ").lower() for r in allowed))
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
-                f"This action needs one of: {', '.join(sorted(r.value for r in allowed))}.",
+                f"You are signed in as {identity.role.value.replace('_', ' ').lower()}. "
+                f"This action needs: {names}. Sign in with that account instead.",
             )
         return identity
 

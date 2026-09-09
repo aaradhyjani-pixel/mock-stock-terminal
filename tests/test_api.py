@@ -100,7 +100,11 @@ async def test_a_role_without_permission_cannot_move_prices(client: AsyncClient)
         json={"symbol": "TESTCO", "pct": "5", "over_seconds": 60},
     )
     assert response.status_code == 403
-    assert "MARKET_OPERATOR" in response.json()["detail"]
+    detail = response.json()["detail"]
+    # The message has to name both the role they have and the one they need,
+    # or an operator mid-event just sees a button that does not work.
+    assert "help desk" in detail
+    assert "market operator" in detail
 
 
 async def test_revoking_a_session_takes_effect_immediately(client: AsyncClient):

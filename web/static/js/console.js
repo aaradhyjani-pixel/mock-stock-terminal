@@ -45,6 +45,7 @@ async function boot() {
   }
   el("operatorName").textContent = state.me.operator.name;
   el("operatorRole").textContent = state.me.operator.role.replace(/_/g, " ");
+  applyRolePermissions();
 
   wireMarketControls();
   wirePriceDesk();
@@ -250,6 +251,37 @@ function renderResults() {
           </tr>`).join("")}
       </tbody>
     </table>`;
+}
+
+/**
+ * Grey out what this operator cannot do, and say who can.
+ *
+ * The alternative is a button that looks live, gets a 403 from the server and
+ * reads as broken software. During an event that costs somebody several minutes
+ * of trying the same thing harder. Everything is still enforced server-side;
+ * this only stops the console offering an action it knows will be refused.
+ */
+function applyRolePermissions() {
+  const role = state.me.operator.role;
+  const superAdmin = role === "SUPER_ADMIN";
+
+  const restricted = [
+    ["resetBtn", "Only the Event Director or Deputy can reset the competition."],
+    ["finaliseBtn", "Only the Event Director or Deputy can end the competition."],
+  ];
+  for (const [id, why] of restricted) {
+    const button = el(id);
+    if (!button || superAdmin) continue;
+    button.disabled = true;
+    button.title = why;
+    button.style.opacity = "0.45";
+    button.style.cursor = "not-allowed";
+    const note = document.createElement("p");
+    note.className = "dim";
+    note.style.cssText = "margin:0;font-size:11px";
+    note.textContent = `${why} You are signed in as ${role.replace(/_/g, " ").toLowerCase()}.`;
+    button.insertAdjacentElement("afterend", note);
+  }
 }
 
 /* -------------------------------------------------------- market controls */
