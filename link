@@ -1,0 +1,16 @@
+#!/bin/bash
+# Prints the current public link. The address changes whenever the tunnel
+# reconnects, so ask this rather than remembering it.
+U=$(cat /tmp/tunnel_url.txt 2>/dev/null)
+L=$(ipconfig getifaddr en0 2>/dev/null)
+S=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$U/healthz" 2>/dev/null)
+echo
+if [ "$S" = "200" ]; then
+  echo "  PLAYERS     $U"
+  echo "  ORGANISER   $U/console/login      director / admin123"
+  echo "  BIG SCREEN  $U/projector"
+else
+  echo "  public link is reconnecting (status $S). Try again in 30 seconds."
+fi
+echo "  ON WI-FI    http://$L:8000"
+echo
