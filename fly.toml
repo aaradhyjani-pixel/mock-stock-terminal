@@ -1,0 +1,39 @@
+# Fly.io. One machine, always on.
+app = "mock-stock-terminal"
+primary_region = "bom"          # Mumbai, closest to the venue
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  EXCHANGE_HOST = "0.0.0.0"
+  EXCHANGE_PORT = "8000"
+  EXCHANGE_SECURE_COOKIES = "true"
+  EXCHANGE_LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Never stop the machine. The market clock has to keep running between
+  # requests, and a cold start mid-session would freeze the market.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 800
+    soft_limit = 600
+
+# Exactly one machine. Scaling this out would run two market engines.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks.health]
+  type = "http"
+  port = 8000
+  path = "/healthz"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"

@@ -1,0 +1,26 @@
+# Render.com. The free plan sleeps after inactivity, which stops the market
+# clock; use the starter plan for a real event.
+services:
+  - type: web
+    name: mock-stock-terminal
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore
+    plan: starter
+    healthCheckPath: /healthz
+    # One instance only: two would mean two market engines.
+    numInstances: 1
+    envVars:
+      - key: EXCHANGE_SECRET_KEY
+        generateValue: true
+      - key: EXCHANGE_SECURE_COOKIES
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mock-stock-db
+          property: connectionString
+
+databases:
+  - name: mock-stock-db
+    plan: basic-256mb
+    region: singapore
