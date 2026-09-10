@@ -1,7 +1,6 @@
 /* The participant terminal.
  *
- * One page, five panes, driven by a single WebSocket. The design rules it
- * follows:
+ * One page, driven by a single WebSocket. The design rules it follows:
  *
  * - The server prices everything. This file never computes a fill price, a
  *   charge or a margin figure; it asks /api/orders/preview and displays what
@@ -9,6 +8,8 @@
  * - Money stays a string from the server to the screen.
  * - When the socket is down, trading controls are disabled and say why. An
  *   order priced against a frozen quote is worse than a short wait.
+ *
+ * UX north star: read the market story → place a clear bet → feel consequence.
  */
 
 import { api } from "./api.js";
@@ -17,6 +18,10 @@ import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, shortTime, s
 import { Stream } from "./stream.js";
 
 const el = (id) => document.getElementById(id);
+
+const COACH_KEY = "mst_coach_v1";
+const DECISION_MS = 12000;
+const RANK_TOAST_COOLDOWN_MS = 8000;
 
 const state = {
   me: null,
@@ -33,10 +38,15 @@ const state = {
   connected: false,
   ticket: { side: "BUY", type: "MARKET", qty: 1 },
   preview: null,
+  lastPreviewSlippage: null, // carried into fill toasts when non-zero
   sort: { key: "symbol", dir: 1 },
   filter: "",
   chart: null,
   interval: "1m",
+  lastRank: null,
+  lastRankToastAt: 0,
+  pulseSymbols: new Map(),   // symbol -> { until, kind }
+  decisionTimer: null,
 };
 
 const stream = new Stream("/ws");
@@ -60,10 +70,15 @@ async function boot() {
   wireTicket();
   wireTabs();
   wireMobileNav();
+  wireMoreSheet();
+  wireCoach();
 
   state.chart = new CandleChart(el("chart"));
 
   await Promise.all([loadInstruments(), loadPortfolio(), loadOrders(), loadNews(), loadLeaderboard()]);
+
+  // Seed the news stage with the newest item if any.
+  if (state.news.length) showOnStage(state.news[0], { decision: false });
 
   wireStream();
   // If WebSockets turn out to be unavailable here, the terminal keeps working
@@ -89,6 +104,16 @@ async function boot() {
 
   setInterval(tickClock, 250);
   setInterval(() => { if (state.connected) loadLeaderboard(); }, 20000);
+
+  maybeShowCoach();
+  measureStageHeight();
+  window.addEventListener("resize", measureStageHeight);
+}
+
+function measureStageHeight() {
+  const stage = el("newsStage");
+  if (!stage) return;
+  document.documentElement.style.setProperty("--stage-h", `${stage.offsetHeight}px`);
 }
 
 function applyStoredTheme() {
@@ -172,6 +197,7 @@ async function loadPortfolio() {
   state.pnl = data.pnl;
   renderFunds();
   renderPositions();
+  updateSideIntent();
 }
 
 async function loadOrders() {
@@ -236,6 +262,7 @@ function wireStream() {
       state.positions = data.portfolio.positions;
       renderFunds();
       renderPositions();
+      updateSideIntent();
     }
     renderWatchlist();
     renderTicketQuote();
@@ -285,6 +312,10 @@ function wireStream() {
     state.positions = data.positions;
     renderFunds();
     renderPositions();
+    updateSideIntent();
+    // Rank may move after fills / marks; refresh board on the next poll, and
+    // also nudge a quieter check so the header stays honest.
+    maybeRefreshRankSoon();
   });
 
   stream.on("order_update", (order) => {
@@ -293,11 +324,16 @@ function wireStream() {
   });
 
   stream.on("fill", (fill) => {
+    const slip = state.lastPreviewSlippage;
+    const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
+      ? ` Slippage ${pct(slip)}.`
+      : "";
     toast(
       fill.side === "BUY" ? "up" : "down",
-      `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol}`,
-      `Filled at ${inr(fill.price)}. Charges ${inr(fill.fees)}.`,
+      `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol} @ ${inr(fill.price)}`,
+      `Filled.${slipNote} Charges ${inr(fill.fees)}.`,
     );
+    state.lastPreviewSlippage = null;
     loadOrders();
   });
 
@@ -305,13 +341,26 @@ function wireStream() {
     state.news.unshift(item);
     state.unreadNews += 1;
     renderNews();
+    showOnStage(item, { decision: true });
+    pulseWatchSymbols(item.symbols || [], item.kind);
     toast("warn", item.kind === "RUMOUR" ? "Rumour" : "News", item.headline);
     if ((item.symbols || []).includes(state.selected)) loadCandles();
+    measureStageHeight();
   });
 
   stream.on("news_retracted", ({ id }) => {
     const item = state.news.find((n) => n.id === id);
-    if (item) { item.retracted = true; renderNews(); }
+    if (item) {
+      item.retracted = true;
+      renderNews();
+      // If the stage is showing this item, mark it.
+      const stage = el("newsStage");
+      if (stage?.dataset.newsId === String(id)) {
+        el("stageHeadline").classList.add("retracted");
+        el("stageKindPill").textContent = "Retracted";
+        el("stageKindPill").className = "pill down";
+      }
+    }
   });
 
   stream.on("announcement", (data) => {
@@ -348,6 +397,14 @@ function wireStream() {
   });
 }
 
+let rankRefreshTimer = null;
+function maybeRefreshRankSoon() {
+  clearTimeout(rankRefreshTimer);
+  rankRefreshTimer = setTimeout(() => {
+    if (state.connected) loadLeaderboard();
+  }, 1500);
+}
+
 function applyMarket(market) {
   state.market = market;
   const stateEl = el("marketState");
@@ -366,7 +423,7 @@ function renderIndex(index) {
   const change = el("indexChange");
   if (index.change_pct !== undefined) {
     change.textContent = pct(index.change_pct);
-    change.className = `v ${signClass(index.change_pct)}`;
+    change.className = signClass(index.change_pct);
   }
 }
 
@@ -383,6 +440,78 @@ function showBanner(message, severity = "info") {
 function hideBanner() {
   el("banner").hidden = true;
   el("app").classList.remove("has-banner");
+}
+
+/* --------------------------------------------------------------- news stage */
+
+function showOnStage(item, { decision = false } = {}) {
+  const stage = el("newsStage");
+  if (!stage || !item) return;
+
+  stage.dataset.newsId = item.id != null ? String(item.id) : "";
+  stage.classList.toggle("rumour", item.kind === "RUMOUR");
+  stage.classList.add("live");
+
+  const pill = el("stageKindPill");
+  pill.textContent = item.retracted ? "Retracted" : (item.kind || "News");
+  pill.className = `pill ${
+    item.retracted ? "down"
+      : item.kind === "RUMOUR" ? "warn"
+        : item.kind === "RESULTS" ? "accent" : "accent"
+  }`;
+
+  const headline = el("stageHeadline");
+  headline.textContent = item.headline || "";
+  headline.classList.toggle("retracted", Boolean(item.retracted));
+
+  el("stageTime").textContent = item.published_at ? shortTime(item.published_at) : "";
+
+  const symBox = el("stageSymbols");
+  const symbols = item.symbols || [];
+  symBox.innerHTML = symbols
+    .map((s) => `<span class="pill accent" data-stage-sym="${escapeHtml(s)}">${escapeHtml(s)}</span>`)
+    .join("");
+  symBox.querySelectorAll("[data-stage-sym]").forEach((tag) => {
+    tag.addEventListener("click", () => {
+      if (state.instruments.has(tag.dataset.stageSym)) select(tag.dataset.stageSym);
+    });
+  });
+
+  const windowEl = el("stageWindow");
+  const bar = el("stageWindowBar");
+  clearTimeout(state.decisionTimer);
+  if (decision && !item.retracted) {
+    windowEl.hidden = false;
+    // Restart CSS animation by reflowing the bar.
+    bar.style.animation = "none";
+    void bar.offsetWidth;
+    bar.style.animation = "";
+    state.decisionTimer = setTimeout(() => {
+      windowEl.hidden = true;
+      stage.classList.remove("live");
+      measureStageHeight();
+    }, DECISION_MS);
+  } else {
+    windowEl.hidden = true;
+  }
+  measureStageHeight();
+}
+
+function pulseWatchSymbols(symbols, kind) {
+  const until = Date.now() + DECISION_MS;
+  const pulseKind = kind === "RUMOUR" ? "rumour" : "news";
+  for (const symbol of symbols) {
+    if (!state.instruments.has(symbol)) continue;
+    state.pulseSymbols.set(symbol, { until, kind: pulseKind });
+  }
+  renderWatchlist();
+  setTimeout(() => {
+    const now = Date.now();
+    for (const [sym, meta] of state.pulseSymbols) {
+      if (meta.until <= now) state.pulseSymbols.delete(sym);
+    }
+    renderWatchlist();
+  }, DECISION_MS + 50);
 }
 
 /* --------------------------------------------------------------- watchlist */
@@ -410,10 +539,15 @@ function renderWatchlist() {
   const previous = new Map();
   body.querySelectorAll("tr[data-symbol]").forEach((tr) => previous.set(tr.dataset.symbol, tr.dataset.last));
 
+  const now = Date.now();
   body.innerHTML = rows.map((row) => {
     const cls = signClass(row.change_pct);
     const badge = statusBadge(row);
-    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" aria-selected="${row.symbol === state.selected}">
+    const pulse = state.pulseSymbols.get(row.symbol);
+    const pulseClass = pulse && pulse.until > now
+      ? (pulse.kind === "rumour" ? "pulse-rumour" : "pulse-news")
+      : "";
+    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" class="${pulseClass}" aria-selected="${row.symbol === state.selected}">
       <td><div class="sym">${row.symbol}${badge}</div><div class="co">${escapeHtml(row.name)}</div></td>
       <td class="num price">${inr(row.last)}</td>
       <td class="num ${cls}">${pct(row.change_pct)}</td>
@@ -449,6 +583,7 @@ async function select(symbol, { focus = true } = {}) {
   // start-up should not: landing on the ticket for a stock nobody chose is a
   // confusing first screen. Start on the market list.
   if (focus && window.innerWidth <= 780) showPane("centre");
+  advanceCoachIf(0);
 }
 
 /* ------------------------------------------------------------------ ticket */
@@ -457,21 +592,14 @@ function wireTicket() {
   document.querySelectorAll("[data-side]").forEach((button) => {
     button.addEventListener("click", () => setSide(button.dataset.side));
   });
+
   document.querySelectorAll("[data-otype]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.ticket.type = button.dataset.otype;
-      document.querySelectorAll("[data-otype]").forEach((b) =>
-        b.setAttribute("aria-pressed", String(b === button)));
-      const needsLimit = state.ticket.type === "LIMIT" || state.ticket.type === "SL_L";
-      const needsTrigger = state.ticket.type.startsWith("SL");
-      el("limitField").hidden = !needsLimit;
-      el("triggerField").hidden = !needsTrigger;
-      schedulePreview();
-    });
+    button.addEventListener("click", () => setOrderType(button.dataset.otype));
   });
 
   el("qty").addEventListener("input", schedulePreview);
   el("limitPrice").addEventListener("input", schedulePreview);
+  el("triggerPrice").addEventListener("input", schedulePreview);
 
   document.querySelectorAll("[data-qty]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -482,7 +610,32 @@ function wireTicket() {
     });
   });
 
+  // Closing the advanced drawer while a stop type is selected snaps back to Market.
+  el("advancedOrders").addEventListener("toggle", () => {
+    const open = el("advancedOrders").open;
+    if (!open && state.ticket.type.startsWith("SL")) {
+      setOrderType("MARKET");
+    }
+  });
+
   el("orderForm").addEventListener("submit", submitOrder);
+}
+
+function setOrderType(type) {
+  state.ticket.type = type;
+  document.querySelectorAll("[data-otype]").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.otype === type)));
+
+  const needsLimit = type === "LIMIT" || type === "SL_L";
+  const needsTrigger = type.startsWith("SL");
+  el("limitField").hidden = !needsLimit;
+  el("triggerField").hidden = !needsTrigger;
+
+  // Keep the advanced drawer open when a stop type is chosen.
+  if (needsTrigger) el("advancedOrders").open = true;
+
+  schedulePreview();
+  updateTicketAvailability();
 }
 
 function setSide(side) {
@@ -491,7 +644,41 @@ function setSide(side) {
     b.setAttribute("aria-pressed", String(b.dataset.side === side)));
   const submit = el("submitOrder");
   submit.className = `btn block ${side === "BUY" ? "buy" : "sell"}`;
+  updateSideIntent();
   schedulePreview();
+}
+
+function updateSideIntent() {
+  const note = el("sideIntent");
+  const sellBtn = el("sellSideBtn");
+  if (!note) return;
+
+  const position = state.positions.find((p) => p.symbol === state.selected);
+  const side = state.ticket.side;
+
+  if (side === "BUY") {
+    if (position && position.qty < 0) {
+      note.textContent = `Closes / reduces your short of ${fmtQty(Math.abs(position.qty))}.`;
+    } else if (position && position.qty > 0) {
+      note.textContent = "Adds to your long.";
+    } else {
+      note.textContent = "Opens a long.";
+    }
+    if (sellBtn) sellBtn.textContent = position && position.qty > 0 ? "Sell" : "Sell / Short";
+    return;
+  }
+
+  // SELL
+  if (position && position.qty > 0) {
+    note.textContent = `Closes / reduces your long of ${fmtQty(position.qty)}.`;
+    if (sellBtn) sellBtn.textContent = "Sell";
+  } else if (position && position.qty < 0) {
+    note.textContent = "Adds to your short.";
+    if (sellBtn) sellBtn.textContent = "Sell / Short";
+  } else {
+    note.textContent = "Opens a short (margin applies).";
+    if (sellBtn) sellBtn.textContent = "Sell / Short";
+  }
 }
 
 function renderTicketQuote() {
@@ -512,6 +699,7 @@ function renderTicketQuote() {
     ? `<span class="pill ${position.side.toLowerCase()}">${position.side}</span> ${fmtQty(Math.abs(position.qty))} at ${inr(position.avg_cost)}`
     : '<span class="dim">No position</span>';
 
+  updateSideIntent();
   updateTicketAvailability();
 }
 
@@ -533,6 +721,7 @@ async function runPreview() {
       symbol: state.selected,
       side: state.ticket.side,
       qty: quantity,
+      // Stop-market previews as market (same as pre-redesign). SL_L keeps its type.
       order_type: state.ticket.type === "SL_M" ? "MARKET" : state.ticket.type,
     };
     if (state.ticket.type === "LIMIT" || state.ticket.type === "SL_L") {
@@ -540,6 +729,9 @@ async function runPreview() {
       if (limit) body.limit_price = limit;
     }
     state.preview = await api.post("/api/orders/preview", body);
+    if (state.preview?.slippage_pct !== undefined) {
+      state.lastPreviewSlippage = state.preview.slippage_pct;
+    }
     renderPreview();
   } catch (error) {
     el("previewBox").innerHTML = `<div class="down">${escapeHtml(error.message)}</div>`;
@@ -549,14 +741,15 @@ async function runPreview() {
 function renderPreview() {
   const preview = state.preview;
   if (!preview) return;
-  const charges = Object.entries(preview.charges.items || {});
+  const charges = Object.entries(preview.charges?.items || {});
   el("previewBox").innerHTML = `
     <div class="line"><span class="k">Estimated price</span><span class="v">${inr(preview.estimated_price)}</span></div>
     ${Number(preview.slippage_pct) !== 0
       ? `<div class="line"><span class="k">Slippage</span><span class="v">${pct(preview.slippage_pct)}</span></div>` : ""}
     <div class="line"><span class="k">Value</span><span class="v">${inr(preview.gross)}</span></div>
+    <div class="line"><span class="k">Charges</span><span class="v">${inr(preview.charges?.total)}</span></div>
     ${charges.length ? `<details>
-      <summary>Charges ${inr(preview.charges.total)}</summary>
+      <summary>Charge breakdown</summary>
       ${charges.map(([k, v]) => `<div class="line"><span class="k">${escapeHtml(k.replace(/_/g, " "))}</span><span class="v">${inr(v)}</span></div>`).join("")}
     </details>` : ""}
     ${Number(preview.margin_locked) > 0
@@ -612,6 +805,11 @@ async function submitOrder(event) {
   if ((state.ticket.type === "LIMIT" || state.ticket.type === "SL_L") && limit) body.limit_price = limit;
   if (state.ticket.type.startsWith("SL") && trigger) body.trigger_price = trigger;
 
+  // Remember preview slippage for the fill toast that may follow.
+  if (state.preview?.slippage_pct !== undefined) {
+    state.lastPreviewSlippage = state.preview.slippage_pct;
+  }
+
   submit.disabled = true;
   submit.textContent = "Sending...";
   try {
@@ -621,11 +819,21 @@ async function submitOrder(event) {
     if (order.status === "REJECTED") {
       toast("down", "Order rejected", order.reason || "");
     } else if (order.status === "FILLED") {
-      toast("up", `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol}`, `Filled at ${inr(order.avg_price)}`);
+      const slip = state.lastPreviewSlippage;
+      const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
+        ? ` Slippage ${pct(slip)}.`
+        : "";
+      toast(
+        "up",
+        `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol} @ ${inr(order.avg_price)}`,
+        `Filled.${slipNote}`,
+      );
+      state.lastPreviewSlippage = null;
     } else {
       toast("", "Order placed", `${order.type} resting at ${inr(order.limit_price || order.trigger_price)}`);
     }
     await Promise.all([loadPortfolio(), runPreview()]);
+    advanceCoachIf(1);
   } catch (error) {
     toast("down", "Could not place the order", error.message);
   } finally {
@@ -659,6 +867,21 @@ function renderFunds() {
     </dl>
     ${renderLeverageGauge(funds)}
   `;
+
+  renderBookMargin(funds);
+}
+
+function renderBookMargin(funds) {
+  const box = el("bookMargin");
+  if (!box) return;
+  const shortMv = Number(funds.short_mv || 0);
+  if (!shortMv) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = renderLeverageGauge(funds);
 }
 
 function renderLeverageGauge(funds) {
@@ -672,7 +895,7 @@ function renderLeverageGauge(funds) {
   if (funds.margin_state === "CALL" || funds.margin_state === "BUST") tone = "danger";
 
   return `
-    <div style="margin-top:12px">
+    <div>
       <div class="row" style="justify-content:space-between;margin-bottom:4px">
         <span class="label">Leverage</span>
         <span class="mono" style="flex:0">${leverage.toFixed(2)}x of ${maxLeverage}x</span>
@@ -699,6 +922,7 @@ function renderPositions() {
   if (!state.positions.length) {
     body.innerHTML = '<tr><td colspan="6"><div class="empty">No open positions. Pick a stock and place your first trade.</div></td></tr>';
     el("positionsCount").textContent = "";
+    updateBookCount();
     return;
   }
   el("positionsCount").textContent = state.positions.length;
@@ -725,7 +949,7 @@ function renderPositions() {
       select(button.dataset.close);
       setSide(button.dataset.side);
       el("qty").value = button.dataset.qty;
-      document.querySelector('[data-otype="MARKET"]').click();
+      setOrderType("MARKET");
       schedulePreview();
       if (window.innerWidth <= 780) showPane("centre");
     });
@@ -733,6 +957,7 @@ function renderPositions() {
   body.querySelectorAll("tr[data-symbol]").forEach((tr) => {
     tr.addEventListener("click", () => select(tr.dataset.symbol));
   });
+  updateBookCount();
 }
 
 function upsertOrder(order) {
@@ -745,20 +970,27 @@ function renderOrders() {
   const body = el("ordersBody");
   const open = state.orders.filter((o) => o.status === "PENDING" || o.status === "TRIGGERED");
   el("ordersCount").textContent = open.length || "";
+  updateBookCount();
 
-  if (!state.orders.length) {
-    body.innerHTML = '<tr><td colspan="5"><div class="empty">No orders yet.</div></td></tr>';
+  // Book shows open orders; if none, surface a few recent for context.
+  const rows = open.length ? open : state.orders.filter((o) => o.status === "FILLED" || o.status === "CANCELLED" || o.status === "REJECTED").slice(0, 8);
+  const showingRecent = !open.length && rows.length;
+
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="5"><div class="empty">No open orders.</div></td></tr>';
     return;
   }
 
-  body.innerHTML = state.orders.slice(0, 100).map((order) => {
+  body.innerHTML = (showingRecent
+    ? `<tr><td colspan="5"><div class="dim" style="padding:6px 8px;font-size:11px">No open orders — recent activity:</div></td></tr>`
+    : "") + rows.map((order) => {
     const isOpen = order.status === "PENDING" || order.status === "TRIGGERED";
     const price = order.avg_price || order.limit_price || order.trigger_price;
     const tone = order.status === "FILLED" ? "up" : order.status === "REJECTED" ? "down" : "";
     return `<tr>
       <td><div class="sym">${order.symbol}</div>
           <span class="pill ${order.side === "BUY" ? "up" : "down"}">${order.side}</span>
-          ${order.tag !== "NORMAL" ? `<span class="pill warn">${order.tag}</span>` : ""}</td>
+          ${order.tag && order.tag !== "NORMAL" ? `<span class="pill warn">${order.tag}</span>` : ""}</td>
       <td class="num">${fmtQty(order.qty)}${order.filled_qty && order.filled_qty < order.qty ? `<br><span class="dim" style="font-size:10px">${order.filled_qty} done</span>` : ""}</td>
       <td class="num">${price ? inr(price) : "-"}<br><span class="dim" style="font-size:10px">${order.type}</span></td>
       <td><span class="pill ${tone}">${order.status}</span>
@@ -783,6 +1015,14 @@ function renderOrders() {
   });
 }
 
+function updateBookCount() {
+  const badge = el("bookCount");
+  if (!badge) return;
+  const open = state.orders.filter((o) => o.status === "PENDING" || o.status === "TRIGGERED").length;
+  const n = state.positions.length + open;
+  badge.textContent = n || "";
+}
+
 /* --------------------------------------------------------------------- news */
 
 function renderNews() {
@@ -794,7 +1034,7 @@ function renderNews() {
   el("newsCount").textContent = state.unreadNews || "";
 
   box.innerHTML = state.news.slice(0, 80).map((item, index) => `
-    <div class="news-item ${item.retracted ? "retracted" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
+    <div class="news-item ${item.retracted ? "retracted" : ""} ${item.kind === "RUMOUR" ? "is-rumour" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
       <div class="top">
         <span class="pill ${item.kind === "RUMOUR" ? "warn" : item.kind === "RESULTS" ? "accent" : ""}">${item.kind}</span>
         ${item.retracted ? '<span class="pill down">Retracted</span>' : ""}
@@ -820,9 +1060,55 @@ function renderNews() {
 
 /* -------------------------------------------------------------- leaderboard */
 
+function yourRankInfo() {
+  const board = state.leaderboard;
+  if (board.you && board.you.rank != null) return board.you;
+  const row = (board.rows || []).find((r) => r.is_you || (state.me && r.team_id === state.me.team.id));
+  return row || null;
+}
+
+function renderHeaderRank() {
+  const info = yourRankInfo();
+  const rankEl = el("hdrRank");
+  if (!rankEl) return;
+
+  if (state.leaderboard.blackout && info?.rank != null) {
+    rankEl.textContent = `#${info.rank}`;
+    rankEl.title = "Leaderboard blackout — your rank still shown";
+  } else if (info?.rank != null) {
+    rankEl.textContent = `#${info.rank}`;
+    rankEl.title = "";
+  } else if (state.leaderboard.blackout) {
+    rankEl.textContent = "—";
+    rankEl.title = "Leaderboard blackout";
+  } else {
+    rankEl.textContent = "—";
+    rankEl.title = "";
+  }
+
+  // Throttled rank-change feedback.
+  if (info?.rank != null) {
+    const prev = state.lastRank;
+    if (prev != null && prev !== info.rank) {
+      const now = Date.now();
+      if (now - state.lastRankToastAt > RANK_TOAST_COOLDOWN_MS) {
+        const up = info.rank < prev;
+        toast(
+          up ? "up" : "down",
+          up ? `Rank up → #${info.rank}` : `Rank down → #${info.rank}`,
+          `Was #${prev}`,
+        );
+        state.lastRankToastAt = now;
+      }
+    }
+    state.lastRank = info.rank;
+  }
+}
+
 function renderLeaderboard() {
   const box = el("leaderList");
   const board = state.leaderboard;
+  renderHeaderRank();
 
   if (board.blackout) {
     box.innerHTML = `<div class="empty">
@@ -867,31 +1153,121 @@ function wireTabs() {
     tab.addEventListener("click", () => {
       document.querySelectorAll("#rightTabs .tab").forEach((t) =>
         t.setAttribute("aria-selected", String(t === tab)));
-      document.querySelectorAll("[data-pane]").forEach((pane) => {
+      // Scope to right-column panes only — never touch mobile-nav / other nodes.
+      document.querySelectorAll(".col.right [data-pane]").forEach((pane) => {
         pane.hidden = pane.dataset.pane !== tab.dataset.tab;
       });
       if (tab.dataset.tab === "news") {
         state.unreadNews = 0;
         el("newsCount").textContent = "";
       }
+      if (tab.dataset.tab === "book") advanceCoachIf(2);
     });
   });
 }
 
 function wireMobileNav() {
   document.querySelectorAll(".mobile-nav button").forEach((button) => {
-    button.addEventListener("click", () => showPane(button.dataset.pane, button.dataset.tab));
+    button.addEventListener("click", () => {
+      const target = button.dataset.mobile;
+      if (target === "more") {
+        openMoreSheet();
+        document.querySelectorAll(".mobile-nav button").forEach((b) =>
+          b.setAttribute("aria-pressed", String(b === button)));
+        return;
+      }
+      closeMoreSheet();
+      showPane(target, button.dataset.tab);
+    });
   });
 }
 
+function wireMoreSheet() {
+  const sheet = el("moreSheet");
+  el("moreClose").addEventListener("click", closeMoreSheet);
+  sheet.addEventListener("click", (event) => {
+    if (event.target === sheet) closeMoreSheet();
+  });
+  sheet.querySelectorAll("[data-more-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      closeMoreSheet();
+      showPane("right", btn.dataset.moreTab);
+    });
+  });
+}
+
+function openMoreSheet() {
+  el("moreSheet").hidden = false;
+}
+
+function closeMoreSheet() {
+  el("moreSheet").hidden = true;
+}
+
 function showPane(pane, tab) {
-  document.querySelectorAll(".mobile-nav button").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset.pane === pane && (!tab || b.dataset.tab === tab))));
+  document.querySelectorAll(".mobile-nav button").forEach((b) => {
+    const match = b.dataset.mobile === pane && (!tab || b.dataset.tab === tab || b.dataset.mobile === "more");
+    // Prefer exact Book match when tab is book; More stays pressed only when sheet open.
+    if (pane === "right" && tab && tab !== "book") {
+      b.setAttribute("aria-pressed", String(b.dataset.mobile === "more"));
+    } else {
+      b.setAttribute("aria-pressed", String(b.dataset.mobile === pane && (pane !== "right" || !tab || b.dataset.tab === tab)));
+    }
+  });
   document.querySelectorAll(".col").forEach((col) => {
     col.classList.toggle("mobile-active", col.dataset.col === pane);
   });
   if (tab) document.querySelector(`#rightTabs .tab[data-tab="${tab}"]`)?.click();
   if (pane === "centre") state.chart?.draw();
+  if (pane === "right" && tab === "book") advanceCoachIf(2);
+}
+
+/* -------------------------------------------------------------------- coach */
+
+const COACH_STEPS = [
+  "Pick a stock from the watchlist.",
+  "Place a tiny buy (qty 1 is fine) to feel a fill.",
+  "Open Book to see your position and any open orders.",
+];
+
+function wireCoach() {
+  el("coachSkip").addEventListener("click", dismissCoach);
+  el("coachNext").addEventListener("click", () => {
+    const step = Number(el("coach").dataset.step || 0);
+    if (step >= COACH_STEPS.length - 1) dismissCoach();
+    else showCoachStep(step + 1);
+  });
+}
+
+function maybeShowCoach() {
+  let seen = null;
+  try { seen = localStorage.getItem(COACH_KEY); } catch { /* ignore */ }
+  if (seen) return;
+  showCoachStep(0);
+}
+
+function showCoachStep(step) {
+  const coach = el("coach");
+  coach.hidden = false;
+  coach.dataset.step = String(step);
+  el("coachStepLabel").textContent = `${step + 1} / ${COACH_STEPS.length}`;
+  el("coachText").textContent = COACH_STEPS[step];
+  el("coachNext").textContent = step >= COACH_STEPS.length - 1 ? "Done" : "Next";
+}
+
+function dismissCoach() {
+  el("coach").hidden = true;
+  try { localStorage.setItem(COACH_KEY, "1"); } catch { /* ignore */ }
+}
+
+function advanceCoachIf(step) {
+  const coach = el("coach");
+  if (!coach || coach.hidden) return;
+  const current = Number(coach.dataset.step || 0);
+  if (current === step) {
+    if (step >= COACH_STEPS.length - 1) dismissCoach();
+    else showCoachStep(step + 1);
+  }
 }
 
 /* ------------------------------------------------------------------- clock */
