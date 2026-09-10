@@ -15,8 +15,16 @@ from pathlib import Path
 
 import pytest
 
+# SQLite by default: fast, and exact here because money is stored as scaled
+# integers. Point TEST_DATABASE_URL at PostgreSQL to run the identical suite
+# against the database the event will actually use:
+#
+#   TEST_DATABASE_URL=postgresql+asyncpg://exchange:exchange@127.0.0.1/exchange \
+#     .venv/bin/python -m pytest -q
 TMP_DB = Path(tempfile.gettempdir()) / "exchange_test.db"
-os.environ["EXCHANGE_DATABASE_URL"] = f"sqlite+aiosqlite:///{TMP_DB}"
+os.environ["EXCHANGE_DATABASE_URL"] = os.environ.get(
+    "TEST_DATABASE_URL", f"sqlite+aiosqlite:///{TMP_DB}"
+)
 os.environ["EXCHANGE_RUN_ENGINE"] = "false"
 os.environ["EXCHANGE_SECRET_KEY"] = "test-secret"
 # Durability does not matter for a database that is dropped between tests.
