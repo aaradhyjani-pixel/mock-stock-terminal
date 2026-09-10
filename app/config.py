@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # Set false on the event VPS only if it is served over plain HTTP, which it
     # should not be. Controls the Secure flag on the refresh cookie.
     secure_cookies: bool = False
+    # Origins allowed to call this API with credentials. Set this when the front
+    # end is served from somewhere else, for example a Vercel deployment:
+    #   EXCHANGE_CORS_ORIGINS='["https://terminal.vercel.app"]'
     cors_origins: list[str] = Field(default_factory=list)
 
     # Turning this off stops the tick loop from starting, which is what the test
@@ -106,6 +109,18 @@ class Settings(BaseSettings):
     @property
     def using_default_secret(self) -> bool:
         return self.secret_key == DEFAULT_SECRET_KEY
+
+    @property
+    def split_frontend(self) -> bool:
+        """True when the pages are served from a different origin than the API."""
+        return bool(self.cors_origins)
+
+    @property
+    def cookie_samesite(self) -> str:
+        """A cookie only travels cross-origin with SameSite=None, and browsers
+        only accept SameSite=None over HTTPS. Same-origin keeps strict, which
+        is the safer setting and costs nothing there."""
+        return "none" if self.split_frontend else "strict"
 
 
 class FeeRules(BaseModel):

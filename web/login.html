@@ -7,6 +7,10 @@
   <title>Sign in - Trading Terminal</title>
   <link rel="stylesheet" href="/static/css/terminal.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232dd4a7'/><path d='M7 21l5-6 4 3 5-8 4 5' stroke='%2304110d' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <!-- Where the backend lives. Empty means the same host that served this
+       page. Set it to the engine URL when the front end is deployed
+       separately, for example on Vercel. No trailing slash. -->
+  <script>window.EXCHANGE_API_BASE = "";</script>
 </head>
 <body>
 <div class="login-page">

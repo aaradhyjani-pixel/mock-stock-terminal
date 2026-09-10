@@ -81,13 +81,17 @@ app = FastAPI(
 
 settings = get_settings()
 if settings.cors_origins:
+    # Only exact origins, never "*". A wildcard cannot carry credentials, and
+    # the refresh cookie is a credential.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+        max_age=600,
     )
+    log.info("CORS enabled for %s", ", ".join(settings.cors_origins))
 
 app.include_router(auth.router)
 app.include_router(public.router)

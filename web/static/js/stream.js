@@ -10,6 +10,8 @@
  * to wait a moment.
  */
 
+import { apiUrl, isCrossOrigin, wsUrl } from "./config.js";
+
 const MAX_BACKOFF_MS = 8000;
 
 // After this many failed reconnects in a row, stop assuming WebSockets work
@@ -73,8 +75,7 @@ export class Stream {
 
   open() {
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const url = `${scheme}://${window.location.host}${this.path}?token=${encodeURIComponent(this.token)}`;
+    const url = `${wsUrl(this.path)}?token=${encodeURIComponent(this.token)}`;
 
     let socket;
     try {
@@ -147,9 +148,9 @@ export class Stream {
       if (!this.polling) return;
       for (const source of this.pollSources) {
         try {
-          const response = await fetch(source.url, {
+          const response = await fetch(apiUrl(source.url), {
             headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
-            credentials: "same-origin",
+            credentials: isCrossOrigin ? "include" : "same-origin",
           });
           if (!response.ok) continue;
           const body = await response.json();

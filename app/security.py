@@ -237,10 +237,15 @@ def set_auth_cookies(response, access: str, refresh: str, *, operator: bool = Fa
     settings = get_settings()
     access_name = "ops_token" if operator else "access_token"
     refresh_name = "ops_refresh" if operator else "refresh_token"
+    same_site = settings.cookie_samesite
+    # A browser silently drops SameSite=None unless the cookie is also Secure,
+    # and the failure looks like "it logs me out after half an hour" rather
+    # than anything obviously wrong. Force the pair together.
+    secure = settings.secure_cookies or same_site == "none"
     common = {
         "httponly": True,
-        "secure": settings.secure_cookies,
-        "samesite": "strict",
+        "secure": secure,
+        "samesite": same_site,
         "path": "/",
     }
     response.set_cookie(access_name, access, max_age=settings.access_token_minutes * 60, **common)

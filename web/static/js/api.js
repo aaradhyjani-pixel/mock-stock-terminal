@@ -8,6 +8,8 @@
  * difference between "it logged me out" and nothing happening at all.
  */
 
+import { apiUrl, isCrossOrigin } from "./config.js";
+
 const STORE_KEY = "exchange.token";
 const OPS_STORE_KEY = "exchange.ops.token";
 
@@ -62,10 +64,13 @@ export class Api {
 
     let response;
     try {
-      response = await fetch(path, {
+      response = await fetch(apiUrl(path), {
         method,
         headers,
-        credentials: "same-origin",
+        // Cross-origin needs "include" for the refresh cookie to travel at all,
+        // and the server must then send SameSite=None; Secure. Same-origin
+        // keeps the stricter setting.
+        credentials: isCrossOrigin ? "include" : "same-origin",
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (cause) {
@@ -108,7 +113,10 @@ export class Api {
 
   async refresh() {
     try {
-      const response = await fetch(this.refreshPath, { method: "POST", credentials: "same-origin" });
+      const response = await fetch(apiUrl(this.refreshPath), {
+        method: "POST",
+        credentials: isCrossOrigin ? "include" : "same-origin",
+      });
       if (!response.ok) return false;
       const data = await response.json();
       if (!data.access_token) return false;

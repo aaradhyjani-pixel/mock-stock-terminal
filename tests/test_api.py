@@ -405,3 +405,55 @@ async def test_the_health_endpoint_reports_the_engine(client: AsyncClient):
     assert response.status_code == 200
     assert response.json()["database"] is True
     assert "engine" in response.json()
+
+
+# ------------------------------------------------------- split deployment
+
+
+def test_cookies_stay_strict_when_everything_is_on_one_origin(monkeypatch):
+    """The safer setting, and it costs nothing when there is nothing to split."""
+    from app.config import Settings
+
+    settings = Settings(cors_origins=[])
+    assert settings.split_frontend is False
+    assert settings.cookie_samesite == "strict"
+
+
+def test_a_split_front_end_switches_cookies_to_samesite_none():
+    """A cookie does not travel cross-origin under SameSite=strict.
+
+    The failure is invisible: sign-in works, then the session dies at the first
+    refresh and the participant is thrown out mid-trade with no error anywhere.
+    """
+    from app.config import Settings
+
+    settings = Settings(cors_origins=["https://terminal.vercel.app"])
+    assert settings.split_frontend is True
+    assert settings.cookie_samesite == "none"
+
+
+async def test_a_cross_origin_session_cookie_is_also_marked_secure(client: AsyncClient):
+    """Browsers drop SameSite=None unless Secure is set too, so the two must
+    always be issued together whatever EXCHANGE_SECURE_COOKIES says."""
+    from app import security
+    from app.config import Settings
+
+    class Response:
+        def __init__(self):
+            self.cookies = {}
+
+        def set_cookie(self, name, value, **kwargs):
+            self.cookies[name] = kwargs
+
+    split = Settings(cors_origins=["https://terminal.vercel.app"], secure_cookies=False)
+    original = security.get_settings
+    security.get_settings = lambda: split
+    try:
+        response = Response()
+        security.set_auth_cookies(response, "access", "refresh")
+    finally:
+        security.get_settings = original
+
+    for options in response.cookies.values():
+        assert options["samesite"] == "none"
+        assert options["secure"] is True, "SameSite=None without Secure is dropped"
