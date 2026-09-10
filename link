@@ -1,16 +1,23 @@
 #!/bin/bash
-# Prints the current public link. The address changes whenever the tunnel
-# reconnects, so ask this rather than remembering it.
-U=$(cat /tmp/tunnel_url.txt 2>/dev/null)
-L=$(ipconfig getifaddr en0 2>/dev/null)
-S=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$U/healthz" 2>/dev/null)
+# Prints the addresses to hand out.
+HOST=$(scutil --get LocalHostName 2>/dev/null)
+IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+S=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "http://127.0.0.1:8000/healthz" 2>/dev/null)
 echo
-if [ "$S" = "200" ]; then
-  echo "  PLAYERS     $U"
-  echo "  ORGANISER   $U/console/login      director / admin123"
-  echo "  BIG SCREEN  $U/projector"
-else
-  echo "  public link is reconnecting (status $S). Try again in 30 seconds."
+if [ "$S" != "200" ]; then
+  echo "  SERVER IS DOWN. launchd should restart it within a few seconds."
+  echo
+  exit 1
 fi
-echo "  ON WI-FI    http://$L:8000"
+echo "  Everyone must be on the same Wi-Fi as this laptop."
+echo
+echo "  PLAYERS      http://$HOST.local:8000"
+echo "               http://$IP:8000            (if .local does not work)"
+echo
+echo "  ORGANISER    http://$HOST.local:8000/console/login"
+echo "               director / admin123        full control, incl. Reset"
+echo "               market / admin123          prices, open, close, freeze"
+echo "               news / admin123            headlines"
+echo
+echo "  BIG SCREEN   http://$HOST.local:8000/projector"
 echo
