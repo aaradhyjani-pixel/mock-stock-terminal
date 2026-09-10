@@ -547,7 +547,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 
 /* -------------------------------------------------------------------- chart */
 
-.chart-wrap { position: relative; flex: 1; min-height: 220px; }
+.chart-wrap { position: relative; flex: 1 1 auto; min-height: 140px; }
 .chart-wrap canvas { display: block; width: 100%; height: 100%; }
 .chart-tip {
   position: absolute;
@@ -1074,12 +1074,14 @@ body.has-offline .app {
 
 /* ---- coach (non-blocking) ---- */
 .coach {
+  /* Sit over the Book column, not the watchlist — first-run help should never hide symbols. */
   position: fixed;
-  left: 14px;
+  right: 14px;
+  left: auto;
   bottom: 14px;
   z-index: 80;
   pointer-events: none;
-  max-width: min(320px, calc(100vw - 28px));
+  max-width: min(300px, calc(100vw - 28px));
 }
 .coach[hidden] { display: none; }
 .coach-card {
@@ -1194,3 +1196,21 @@ body.has-offline .app {
   border-left: 3px solid var(--warn);
 }
 .news-item.is-rumour .headline { color: var(--warn); }
+
+
+/* ---- ticket panel scroll (centre column) ---- */
+.col.centre .panel.ticket-panel {
+  flex: 0 1 auto;
+  max-height: min(48vh, 520px);
+  overflow: hidden;
+}
+.col.centre .panel.ticket-panel .ticket {
+  overflow: auto;
+  min-height: 0;
+}
+.col.centre .panel.ticket-panel #submitOrder {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.35);
+}
