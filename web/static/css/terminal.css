@@ -428,6 +428,16 @@ input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
+/* Author display:flex otherwise beats the UA [hidden] rule and leaks
+ * limit/trigger inputs when the ticket is on Market. */
+.field[hidden],
+.book-margin[hidden],
+.coach[hidden],
+.more-sheet[hidden],
+.banner[hidden],
+.error-box[hidden] {
+  display: none !important;
+}
 .field > label { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
