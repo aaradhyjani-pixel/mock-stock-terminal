@@ -1252,3 +1252,36 @@ body.has-offline .app {
 @media (max-width: 340px) {
   .stat.primary .v { font-size: 11px; }
 }
+
+/* ---- positions as stacked rows, not a table ----
+ * See the comment in index.html: a Stock/Qty/Avg/Last/P&L/Close table needs
+ * about 450px and this rail is 300-340px. Two lines per position instead of
+ * six columns, with the number that matters - unrealised P&L - given the
+ * whole top-right corner rather than a squeezed numeric cell. */
+.position-list { display: flex; flex-direction: column; }
+.position-row {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.position-row:hover { background: var(--panel-2); }
+.position-row:last-child { border-bottom: none; }
+.position-line1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.position-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.position-name .sym { font-weight: 600; font-size: 13px; }
+.position-pnl { font-weight: 600; font-size: 13.5px; white-space: nowrap; }
+.position-line2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+.position-detail { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.position-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.position-pct { font-size: 11px; }

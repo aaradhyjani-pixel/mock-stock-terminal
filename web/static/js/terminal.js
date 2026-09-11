@@ -942,27 +942,40 @@ function flashFunds(tone) {
 function renderPositions() {
   const body = el("positionsBody");
   if (!state.positions.length) {
-    body.innerHTML = '<tr><td colspan="6"><div class="empty">No open positions. Pick a stock and place your first trade.</div></td></tr>';
+    body.innerHTML = '<div class="empty">No open positions. Pick a stock and place your first trade.</div>';
     el("positionsCount").textContent = "";
     updateBookCount();
     return;
   }
   el("positionsCount").textContent = state.positions.length;
 
+  // One row, two lines. The number a participant actually checks mid-trade -
+  // "am I up or down, and by how much" - gets the whole top-right corner to
+  // itself instead of sharing a narrow numeric column with four others. The
+  // second line is the arithmetic behind that number, for whoever wants it.
   body.innerHTML = state.positions.map((position) => {
     const live = state.instruments.get(position.symbol);
     const last = live ? live.last : position.last;
-    return `<tr data-symbol="${position.symbol}">
-      <td><div class="sym">${position.symbol}</div>
-          <span class="pill ${position.side.toLowerCase()}">${position.side}</span></td>
-      <td class="num">${fmtQty(Math.abs(position.qty))}</td>
-      <td class="num">${inr(position.avg_cost)}</td>
-      <td class="num">${inr(last)}</td>
-      <td class="num ${signClass(position.unrealised_pnl)}">${inr(position.unrealised_pnl, { sign: true })}<br>
-          <span style="font-size:10px">${pct(position.unrealised_pct)}</span></td>
-      <td class="num"><button class="btn sm ghost" data-close="${position.symbol}" data-qty="${Math.abs(position.qty)}"
-          data-side="${position.qty > 0 ? "SELL" : "BUY"}">Close</button></td>
-    </tr>`;
+    const pnlClass = signClass(position.unrealised_pnl);
+    return `<div class="position-row" data-symbol="${position.symbol}">
+      <div class="position-line1">
+        <span class="position-name">
+          <span class="sym">${position.symbol}</span>
+          <span class="pill ${position.side.toLowerCase()}">${position.side}</span>
+        </span>
+        <span class="position-pnl num ${pnlClass}">${inr(position.unrealised_pnl, { sign: true })}</span>
+      </div>
+      <div class="position-line2">
+        <span class="position-detail num">
+          ${fmtQty(Math.abs(position.qty))} @ ${inr(position.avg_cost)} &rarr; ${inr(last)}
+        </span>
+        <span class="position-actions">
+          <span class="position-pct num ${pnlClass}">${pct(position.unrealised_pct)}</span>
+          <button class="btn sm ghost" data-close="${position.symbol}" data-qty="${Math.abs(position.qty)}"
+              data-side="${position.qty > 0 ? "SELL" : "BUY"}">Close</button>
+        </span>
+      </div>
+    </div>`;
   }).join("");
 
   body.querySelectorAll("[data-close]").forEach((button) => {
@@ -976,8 +989,8 @@ function renderPositions() {
       if (window.innerWidth <= 780) showPane("centre");
     });
   });
-  body.querySelectorAll("tr[data-symbol]").forEach((tr) => {
-    tr.addEventListener("click", () => select(tr.dataset.symbol));
+  body.querySelectorAll(".position-row").forEach((row) => {
+    row.addEventListener("click", () => select(row.dataset.symbol));
   });
   updateBookCount();
 }

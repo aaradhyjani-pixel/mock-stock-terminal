@@ -239,15 +239,13 @@
           <h3>Positions</h3>
           <span class="badge" id="positionsCount"></span>
         </div>
-        <table class="grid">
-          <thead>
-            <tr>
-              <th>Stock</th><th class="num">Qty</th><th class="num">Avg</th>
-              <th class="num">Last</th><th class="num">P&amp;L</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="positionsBody"></tbody>
-        </table>
+        <!-- A rigid Stock/Qty/Avg/Last/P&L/Close table needs about 450px and
+             this rail is 300-340px: the P&L figure and the Close button were
+             clipped off the right edge with no way to reach them. Positions
+             render as stacked rows instead - see renderPositions() - where
+             the one number that matters (P&L) is never fighting five other
+             columns for the same width. -->
+        <div id="positionsBody" class="position-list"></div>
       </div>
 
       <div class="book-section">
