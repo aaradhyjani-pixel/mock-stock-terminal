@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a0e0d">
-  <title>Trading Terminal</title>
+  <title>ETERNAL</title>
   <link rel="stylesheet" href="/static/css/terminal.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232dd4a7'/><path d='M7 21l5-6 4 3 5-8 4 5' stroke='%2304110d' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <!-- Where the backend lives. Empty means the same host that served this
@@ -15,9 +15,9 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">
-    <span class="mark">M</span>
-    <span class="hide-sm">Terminal</span>
+  <div class="brand" title="ETERNAL">
+    <span class="mark">E</span>
+    <span class="wordmark">ETERNAL</span>
   </div>
 
   <div class="clock">
@@ -85,6 +85,14 @@
     </div>
   </div>
 </section>
+
+<!-- Desktop shortcuts hint (keys already wired in terminal.js) -->
+<div class="shortcuts-bar hide-narrow" id="shortcutsBar" aria-hidden="true">
+  <span class="shortcuts-label">Shortcuts</span>
+  <kbd>B</kbd><span>Buy</span>
+  <kbd>S</kbd><span>Sell</span>
+  <kbd>/</kbd><span>Filter</span>
+</div>
 
 <main class="app" id="app">
 
@@ -215,6 +223,22 @@
 
   <!-- ---------------------------------------------------------------- right -->
   <section class="col right" data-col="right">
+    <!-- ETERNAL Pulse dock — desktop coaching strip (local only; not ranked) -->
+    <aside class="pulse-dock" id="pulseDock" aria-label="ETERNAL Pulse">
+      <div class="pulse-dock-head">
+        <span class="pulse-dock-mark">Pulse</span>
+        <span class="pulse-dock-sub">personal · not ranked</span>
+      </div>
+      <div class="pulse-chips" id="pulseChips">
+        <span class="pulse-chip" data-stat="reacted"><b id="pulseReacted">0</b> Reacted</span>
+        <span class="pulse-chip" data-stat="hesitated"><b id="pulseHesitated">0</b> Hesitated</span>
+        <span class="pulse-chip" data-stat="chased"><b id="pulseChased">0</b> Chased</span>
+        <span class="pulse-chip" data-stat="sized_hard"><b id="pulseSized">0</b> Sized hard</span>
+        <span class="pulse-chip" data-stat="clean_entry"><b id="pulseClean">0</b> Clean</span>
+      </div>
+      <div class="pulse-last" id="pulseLast"><span class="dim">No moments yet — trade the story.</span></div>
+    </aside>
+
     <div class="tabs" id="rightTabs">
       <button class="tab" data-tab="book" aria-selected="true">
         Book <span class="badge" id="bookCount"></span>

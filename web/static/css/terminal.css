@@ -1214,3 +1214,256 @@ body.has-offline .app {
   z-index: 2;
   box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.35);
 }
+
+/* ============================================================ ETERNAL desktop 10x
+ * Desktop-first visibility + Pulse dock + shortcuts + action ambience.
+ * ============================================================ */
+
+.brand .wordmark {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.login-tagline {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- desktop shortcuts hint bar ---- */
+.shortcuts-bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 11px;
+  color: var(--dim);
+  flex-shrink: 0;
+}
+.shortcuts-bar .shortcuts-label {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 4px;
+  color: var(--muted);
+}
+.shortcuts-bar kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+}
+.shortcuts-bar span { margin-right: 10px; }
+
+/* ---- Pulse dock ---- */
+.pulse-dock {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  flex-shrink: 0;
+}
+.pulse-dock-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pulse-dock-mark {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.pulse-dock-sub {
+  font-size: 10px;
+  color: var(--dim);
+}
+.pulse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pulse-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pulse-chip b {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pulse-last {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  min-height: 18px;
+}
+.pulse-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--accent-ghost);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pulse-tag {
+  display: inline-flex;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--panel-3);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.pulse-last-detail { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.pulse-dock.window-open {
+  border-bottom-color: var(--accent-dim);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* Premium Pulse moment toast */
+.toast.pulse-moment {
+  border-left-width: 4px;
+  min-width: 260px;
+  padding: 12px 14px;
+  background: var(--panel-3);
+  box-shadow: var(--shadow);
+}
+.toast.pulse-moment .pulse-moment-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.toast.pulse-moment .pulse-price {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+/* ---- ACTION ambience while decision window is live ---- */
+html.pulse-action .news-stage.live {
+  box-shadow: 0 0 0 1px var(--accent-dim), 0 8px 28px rgba(45, 212, 167, 0.12);
+}
+html.pulse-action .col.centre .panel.ticket-panel {
+  border-color: var(--accent-dim);
+}
+html.pulse-action .app {
+  /* subtle panel accent without motion spam */
+  outline: 1px solid transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.pulse-action .news-stage.live {
+    box-shadow: none;
+    border-bottom-width: 2px;
+  }
+}
+
+/* ---- Desktop (≥1100px): visibility 10x ---- */
+@media (min-width: 1100px) {
+  :root { --header-h: 56px; }
+
+  .shortcuts-bar { display: flex; }
+
+  .topbar { gap: 14px; padding: 0 16px; }
+  .brand .mark { width: 26px; height: 26px; font-size: 13px; border-radius: 4px; }
+  .brand .wordmark { font-size: 14px; letter-spacing: 0.16em; }
+  .clock { padding: 5px 12px; }
+  .clock .countdown { font-size: 16px; }
+  .clock .state { font-size: 12px; }
+  .topbar .stat.primary .v { font-size: 18px; font-weight: 800; }
+  .topbar .stat.primary .k { font-size: 10px; }
+  .topbar .rank-stat .v { font-size: 18px; }
+  .chip .v { font-size: 12px; }
+  .chip .k { font-size: 9.5px; }
+
+  .news-stage { padding: 12px 18px; }
+  .news-stage .stage-headline { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+  .news-stage:not(.live) .stage-headline { color: var(--muted); font-weight: 600; }
+  .news-stage .stage-meta { font-size: 12px; margin-top: 4px; }
+  .stage-window { width: 140px; gap: 5px; }
+  .stage-window-label { font-size: 10px; color: var(--accent); }
+  .stage-window-meter { height: 6px; border-radius: 3px; }
+  .news-stage .stage-kind .pill { font-size: 11px; padding: 2px 8px; }
+
+  /* Watchlist: taller rows, clearer type, unmistakable selection */
+  #watchTable th { font-size: 11px; padding: 8px 10px; }
+  #watchTable td { padding: 9px 10px; }
+  table.grid .sym { font-size: 13.5px; }
+  table.grid .co { font-size: 11px; }
+  table.grid tbody tr[aria-selected="true"] {
+    background: var(--accent-ghost);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  table.grid tbody tr[aria-selected="true"] .sym { color: var(--accent); }
+
+  /* Order ticket: keep primary CTA fully visible */
+  .col.centre .panel.ticket-panel {
+    max-height: min(52vh, 560px);
+  }
+  .col.centre .panel.ticket-panel #submitOrder {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    min-height: 42px;
+    font-size: 14px;
+    font-weight: 800;
+    box-shadow: 0 -10px 20px rgba(0, 0, 0, 0.4);
+  }
+  .ticket .quotes .v { font-size: 16px; }
+
+  /* Pulse dock visible on desktop */
+  .pulse-dock { display: flex; }
+}
+
+/* Collapse / hide Pulse + shortcuts on smaller screens */
+@media (max-width: 1099px) {
+  .pulse-dock { display: none !important; }
+  .shortcuts-bar { display: none !important; }
+  .hide-narrow { display: none !important; }
+}
+
+/* App height accounts for shortcuts bar on desktop when present */
+@media (min-width: 1100px) {
+  .app {
+    height: calc(100vh - var(--header-h) - var(--stage-h, 52px) - 26px);
+  }
+  .app.has-banner {
+    height: calc(100vh - var(--header-h) - var(--stage-h, 52px) - 26px - 33px);
+  }
+}

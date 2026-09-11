@@ -15,6 +15,7 @@
 import { api } from "./api.js";
 import { CandleChart, toCandles } from "./chart.js";
 import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, shortTime, signClass } from "./format.js";
+import { createPulse } from "./pulse.js";
 import { Stream } from "./stream.js";
 
 const el = (id) => document.getElementById(id);
@@ -51,6 +52,11 @@ const state = {
 
 const stream = new Stream("/ws");
 
+/* ETERNAL Pulse — personal coaching; never touches rank/cash. */
+const pulse = createPulse({
+  onUpdate: (snap) => renderPulseDock(snap),
+});
+
 /* ------------------------------------------------------------------ startup */
 
 async function boot() {
@@ -65,6 +71,8 @@ async function boot() {
 
   el("teamName").textContent = state.me.team.name;
   el("memberName").textContent = state.me.member.name;
+  pulse.setTeamId(state.me.team?.id);
+  renderPulseDock(pulse.getSnapshot());
 
   wireChrome();
   wireTicket();
@@ -113,6 +121,7 @@ async function boot() {
   maybeShowCoach();
   measureStageHeight();
   window.addEventListener("resize", measureStageHeight);
+  document.title = "ETERNAL";
 }
 
 
@@ -345,11 +354,23 @@ function wireStream() {
     const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
       ? ` Slippage ${pct(slip)}.`
       : "";
-    toast(
-      fill.side === "BUY" ? "up" : "down",
-      `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol} @ ${inr(fill.price)}`,
-      `Filled.${slipNote} Charges ${inr(fill.fees)}.`,
-    );
+    const moment = pulse.onFill({
+      symbol: fill.symbol,
+      side: fill.side,
+      qty: fill.qty,
+      price: fill.price,
+      priceDisplay: inr(fill.price),
+      fees: fill.fees,
+      slippagePct: slip,
+    });
+    // Pulse moment card is the rich desktop feedback; fall back to classic toast if Pulse skipped.
+    if (!moment) {
+      toast(
+        fill.side === "BUY" ? "up" : "down",
+        `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol} @ ${inr(fill.price)}`,
+        `Filled.${slipNote} Charges ${inr(fill.fees)}.`,
+      );
+    }
     state.lastPreviewSlippage = null;
     loadOrders();
   });
@@ -503,13 +524,18 @@ function showOnStage(item, { decision = false } = {}) {
     bar.style.animation = "none";
     void bar.offsetWidth;
     bar.style.animation = "";
+    pulse.onDecisionStart(symbols, { id: item.id, kind: item.kind, durationMs: DECISION_MS });
     state.decisionTimer = setTimeout(() => {
       windowEl.hidden = true;
       stage.classList.remove("live");
+      // Pulse auto-closes on its own timer; keep stage chrome in sync.
       measureStageHeight();
     }, DECISION_MS);
   } else {
     windowEl.hidden = true;
+    if (!decision) {
+      /* seed / archive view — do not open a coaching window */
+    }
   }
   measureStageHeight();
 }
@@ -837,14 +863,24 @@ async function submitOrder(event) {
       toast("down", "Order rejected", order.reason || "");
     } else if (order.status === "FILLED") {
       const slip = state.lastPreviewSlippage;
-      const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
-        ? ` Slippage ${pct(slip)}.`
-        : "";
-      toast(
-        "up",
-        `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol} @ ${inr(order.avg_price)}`,
-        `Filled.${slipNote}`,
-      );
+      const moment = pulse.onFill({
+        symbol: order.symbol,
+        side: order.side,
+        qty: order.filled_qty,
+        price: order.avg_price,
+        priceDisplay: inr(order.avg_price),
+        slippagePct: slip,
+      });
+      if (!moment) {
+        const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
+          ? ` Slippage ${pct(slip)}.`
+          : "";
+        toast(
+          "up",
+          `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol} @ ${inr(order.avg_price)}`,
+          `Filled.${slipNote}`,
+        );
+      }
       state.lastPreviewSlippage = null;
     } else {
       toast("", "Order placed", `${order.type} resting at ${inr(order.limit_price || order.trigger_price)}`);
@@ -1299,6 +1335,34 @@ function tickClock() {
   const remaining = (new Date(market.ends_at).getTime() - Date.now()) / 1000;
   countdown.textContent = duration(remaining);
   countdown.className = `countdown ${remaining < 60 && market.state === "OPEN" ? "down" : ""}`;
+}
+
+/* ------------------------------------------------------------- ETERNAL Pulse */
+
+function renderPulseDock(snap) {
+  const dock = el("pulseDock");
+  if (!dock || !snap) return;
+  const s = snap.stats || {};
+  const set = (id, n) => { const node = el(id); if (node) node.textContent = String(n ?? 0); };
+  set("pulseReacted", s.reacted);
+  set("pulseHesitated", s.hesitated);
+  set("pulseChased", s.chased);
+  set("pulseSized", s.sized_hard);
+  set("pulseClean", s.clean_entry);
+  dock.classList.toggle("window-open", Boolean(snap.windowOpen));
+  const last = el("pulseLast");
+  if (!last) return;
+  if (snap.lastMoment) {
+    const m = snap.lastMoment;
+    const tags = (m.tags || []).filter((t) => t !== m.label).slice(0, 2)
+      .map((t) => `<span class="pulse-tag">${escapeHtml(t)}</span>`).join("");
+    const detail = m.symbol
+      ? `${escapeHtml(m.side || "")} ${escapeHtml(String(m.qty ?? ""))} ${escapeHtml(m.symbol)}`
+      : escapeHtml(m.blurb || "");
+    last.innerHTML = `<span class="pulse-label">${escapeHtml(m.label)}</span>${tags}<span class="pulse-last-detail">${detail}</span>`;
+  } else {
+    last.innerHTML = `<span class="dim">No moments yet — trade the story.</span>`;
+  }
 }
 
 /* ------------------------------------------------------------------- toasts */
