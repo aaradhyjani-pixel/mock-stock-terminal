@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0a0e0d">
+  <meta name="theme-color" content="#070a09">
   <title>Sign in - Trading Terminal</title>
   <link rel="stylesheet" href="/static/css/terminal.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232dd4a7'/><path d='M7 21l5-6 4 3 5-8 4 5' stroke='%2304110d' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232dd4a7'/><path d='M7 21l5-6 4 3 5-8 4 5' stroke='%2304110d' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <!-- Where the backend lives. Empty means the same host that served this
        page. Set it to the engine URL when the front end is deployed
        separately, for example on Vercel. No trailing slash. -->
@@ -19,7 +19,7 @@
       <span class="mark">M</span>
       <span id="competitionName">Mock Market Championship</span>
     </div>
-    <p class="login-tagline">The floor is live. Read the tape. Judgment is the sport.</p>
+    <p class="login-tagline">Judgment under pressure. <em>The floor is live.</em></p>
     <p class="login-hint muted">
       Sign in with the login and password on your team's card.
     </p>
@@ -42,7 +42,7 @@
     <!-- The market clock is shown before sign-in on purpose: someone who cannot
          get in wants to know whether they are late, and this answers it without
          them having to ask a volunteer. -->
-    <div class="login-status">
+    <div class="login-status" aria-live="polite">
       <span>
         <span class="label">Market</span><br>
         <b id="marketState">Checking...</b>
@@ -54,7 +54,7 @@
       </span>
     </div>
 
-    <p class="dim" style="font-size:11.5px;margin:14px 0 0">
+    <p class="login-foot">
       Lost your card or forgotten the password? The help desk can issue a new one.
       Operators sign in at <a href="/console/login">the console</a>.
     </p>
