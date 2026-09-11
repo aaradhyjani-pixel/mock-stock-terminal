@@ -5,7 +5,7 @@
 # from it, and then do not touch it again: the operator console refuses to
 # reload this while the market is open, on purpose.
 
-competition_name: "ETERNAL"
+competition_name: "Mock Market Championship"
 starting_capital: "1000000"      # Rs 10,00,000 per team
 max_members_per_team: 5
 

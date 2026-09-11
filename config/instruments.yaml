@@ -239,3 +239,14 @@ instruments:
     liquidity_notional: "4000000"
     band_pct: "20"
     index_weight: "2"
+
+  # ---- Consumer internet (quick commerce / food delivery)
+  - symbol: ETERNAL
+    name: Eternal Ltd
+    sector: Consumer Internet
+    # Parent of Zomato and Blinkit. NSE:ETERNAL. Refresh before the event.
+    start_price: "320.60"
+    spread_bps: "15"
+    daily_vol_pct: "2.4"
+    liquidity_notional: "12000000"
+    index_weight: "3"

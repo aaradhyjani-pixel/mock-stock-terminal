@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a0e0d">
-  <title>Sign in · ETERNAL</title>
+  <title>Sign in - Trading Terminal</title>
   <link rel="stylesheet" href="/static/css/terminal.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232dd4a7'/><path d='M7 21l5-6 4 3 5-8 4 5' stroke='%2304110d' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
   <!-- Where the backend lives. Empty means the same host that served this
@@ -17,7 +17,7 @@
   <div class="login-card">
     <div class="brand">
       <span class="mark">E</span>
-      <span class="wordmark" id="competitionName">ETERNAL</span>
+      <span id="competitionName">Mock Market Championship</span>
     </div>
     <p class="login-tagline">Judgment under pressure. Twenty-five minutes. One market story.</p>
     <p class="muted" style="margin:8px 0 0">
@@ -79,7 +79,7 @@ async function pollMarket() {
     el("marketState").textContent = STATE_TEXT[market.state] || market.state;
     el("marketDay").textContent = market.day_no ? `- day ${market.day_no} of ${market.total_days}` : "";
     if (market.rules?.competition) el("competitionName").textContent = market.rules.competition;
-    document.title = `Sign in · ${market.rules?.competition || "ETERNAL"}`;
+    document.title = `Sign in - ${market.rules?.competition || "Trading Terminal"}`;
     endsAt = market.ends_at ? new Date(market.ends_at).getTime() : null;
   } catch {
     el("marketState").textContent = "Cannot reach the exchange";

@@ -1,4 +1,4 @@
-/* ETERNAL Pulse — personal coaching feedback (client-only).
+/* Pulse — personal coaching feedback (client-only).
  *
  * Does NOT affect ranking, cash, fills, or margin. See docs/eternal-pulse.md.
  * Deterministic rules: news window timing + preview slippage + fill outcome.

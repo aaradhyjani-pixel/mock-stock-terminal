@@ -52,7 +52,7 @@ const state = {
 
 const stream = new Stream("/ws");
 
-/* ETERNAL Pulse — personal coaching; never touches rank/cash. */
+/* Pulse — personal coaching; never touches rank/cash. */
 const pulse = createPulse({
   onUpdate: (snap) => renderPulseDock(snap),
 });
@@ -121,7 +121,7 @@ async function boot() {
   maybeShowCoach();
   measureStageHeight();
   window.addEventListener("resize", measureStageHeight);
-  document.title = "ETERNAL";
+  document.title = "Trading Terminal";
 }
 
 
@@ -1337,7 +1337,7 @@ function tickClock() {
   countdown.className = `countdown ${remaining < 60 && market.state === "OPEN" ? "down" : ""}`;
 }
 
-/* ------------------------------------------------------------- ETERNAL Pulse */
+/* ------------------------------------------------------------- Pulse */
 
 function renderPulseDock(snap) {
   const dock = el("pulseDock");
