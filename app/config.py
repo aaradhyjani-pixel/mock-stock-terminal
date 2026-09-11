@@ -156,8 +156,8 @@ class FeeRules(BaseModel):
 class MarginRules(BaseModel):
     """Short-selling margin. See ``docs/margin.md`` for the derivation.
 
-    ``initial_pct`` of 20 is the 5x leverage cap in the brief: a team may hold
-    short exposure of at most five times its account value.
+    ``initial_pct`` of 66.67 is the 1.5x leverage cap: a team may hold
+    short exposure of at most 1.5 times its account value.
     """
 
     initial_pct: Decimal = Decimal("20")
