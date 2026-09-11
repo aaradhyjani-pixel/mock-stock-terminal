@@ -428,6 +428,16 @@ input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
+/* Author display:flex otherwise beats the UA [hidden] rule and leaks
+ * limit/trigger inputs when the ticket is on Market. */
+.field[hidden],
+.book-margin[hidden],
+.coach[hidden],
+.more-sheet[hidden],
+.banner[hidden],
+.error-box[hidden] {
+  display: none !important;
+}
 .field > label { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
@@ -537,7 +547,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 
 /* -------------------------------------------------------------------- chart */
 
-.chart-wrap { position: relative; flex: 1; min-height: 220px; }
+.chart-wrap { position: relative; flex: 1 1 auto; min-height: 140px; }
 .chart-wrap canvas { display: block; width: 100%; height: 100%; }
 .chart-tip {
   position: absolute;
@@ -824,3 +834,383 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   padding: 40px;
 }
 .projector .blackout .big { font-size: 34px; font-weight: 700; }
+
+/* ============================================================ UX redesign
+ * Additive styles for topbar hierarchy, news stage, Book pane, progressive
+ * ticket disclosure, coach, more-sheet, and mobile 4-item nav.
+ * ============================================================ */
+
+/* ---- topbar hierarchy ---- */
+.topbar { gap: 12px; }
+.topbar .stat.primary .v {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.topbar .stat.primary .k { color: var(--muted); }
+.topbar .rank-stat .v { color: var(--accent); }
+.topbar .team-name {
+  font-family: var(--sans) !important;
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
+.chip-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.chip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  line-height: 1.15;
+}
+.chip .k {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.chip .v {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- news / rumour stage ---- */
+.news-stage {
+  flex-shrink: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 14px;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+.news-stage.live {
+  background: var(--accent-ghost);
+  border-bottom-color: var(--accent-dim);
+}
+.news-stage.rumour {
+  background: var(--warn-bg);
+  border-bottom-color: var(--warn);
+}
+.news-stage .stage-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1600px;
+}
+.news-stage .stage-kind { flex-shrink: 0; }
+.news-stage .stage-body { flex: 1; min-width: 0; }
+.news-stage .stage-headline {
+  font-weight: 700;
+  font-size: 13.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.news-stage.rumour .stage-headline { color: var(--warn); }
+.news-stage .stage-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--dim);
+}
+.news-stage .stage-symbols { display: flex; gap: 4px; flex-wrap: wrap; }
+.news-stage .stage-symbols .pill { cursor: pointer; }
+.news-stage .stage-symbols .pill:hover { filter: brightness(1.15); }
+
+.stage-window {
+  flex-shrink: 0;
+  width: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.stage-window-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: right;
+}
+.stage-window-meter {
+  height: 4px;
+  background: var(--panel-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.stage-window-meter > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: decision-drain 12s linear forwards;
+}
+.news-stage.rumour .stage-window-meter > span { background: var(--warn); }
+
+@keyframes decision-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-stage { transition: none; }
+  .stage-window-meter > span { animation: none; width: 100%; }
+}
+
+/* Watchlist pulse when a news symbol is mentioned */
+@keyframes pulse-news-row {
+  0%, 100% { background: transparent; }
+  30% { background: var(--accent-ghost); }
+  60% { background: rgba(45, 212, 167, 0.22); }
+}
+@keyframes pulse-rumour-row {
+  0%, 100% { background: transparent; }
+  30% { background: var(--warn-bg); }
+  60% { background: rgba(245, 165, 36, 0.22); }
+}
+table.grid tbody tr.pulse-news { animation: pulse-news-row 1.1s ease-in-out 3; }
+table.grid tbody tr.pulse-rumour { animation: pulse-rumour-row 1.1s ease-in-out 3; }
+@media (prefers-reduced-motion: reduce) {
+  table.grid tbody tr.pulse-news,
+  table.grid tbody tr.pulse-rumour { animation: none; background: var(--accent-ghost); }
+}
+
+/* Layout: account for news stage under the header */
+.app {
+  height: calc(100vh - var(--header-h) - var(--stage-h, 52px));
+}
+.app.has-banner {
+  height: calc(100vh - var(--header-h) - var(--stage-h, 52px) - 33px);
+}
+body.has-offline .app {
+  /* offline bar is variable; keep stage + header math as primary */
+}
+
+/* ---- Book pane ---- */
+.book-pane { display: flex; flex-direction: column; overflow: auto; }
+.book-section { flex-shrink: 0; }
+.book-section + .book-section {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.book-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 4px;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+.book-section-head h3 {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.book-section-head .badge {
+  display: inline-block;
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--panel-3);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-align: center;
+}
+.book-section-head .badge:empty { display: none; }
+
+.book-margin {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  flex-shrink: 0;
+}
+.book-margin[hidden] { display: none; }
+
+/* ---- progressive ticket disclosure ---- */
+.advanced-orders {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+.advanced-orders > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  list-style: none;
+  user-select: none;
+}
+.advanced-orders > summary::-webkit-details-marker { display: none; }
+.advanced-orders > summary::before {
+  content: "+ ";
+  color: var(--accent);
+  font-weight: 700;
+}
+.advanced-orders[open] > summary::before { content: "− "; }
+.advanced-orders > summary:hover { color: var(--text); }
+.advanced-body { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+
+#sideIntent:not(:empty) {
+  color: var(--muted);
+}
+
+/* ---- coach (non-blocking) ---- */
+.coach {
+  /* Sit over the Book column, not the watchlist — first-run help should never hide symbols. */
+  position: fixed;
+  right: 14px;
+  left: auto;
+  bottom: 14px;
+  z-index: 80;
+  pointer-events: none;
+  max-width: min(300px, calc(100vw - 28px));
+}
+.coach[hidden] { display: none; }
+.coach-card {
+  pointer-events: auto;
+  background: var(--panel-3);
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.coach-progress {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.coach-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.coach-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* ---- more sheet (mobile) ---- */
+.more-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+  padding-bottom: calc(12px + 52px);
+}
+.more-sheet[hidden] { display: none; }
+.more-sheet-card {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px 8px 6px 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.more-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.more-sheet-head h2 {
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.more-item {
+  display: block;
+  width: 100%;
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  text-align: left;
+  padding: 14px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.more-item:hover { background: var(--panel-2); }
+.more-item:last-child { border-bottom: none; }
+
+/* ---- mobile: 4-item nav + stage ---- */
+@media (max-width: 780px) {
+  .app {
+    height: calc(100vh - var(--header-h) - var(--stage-h, 52px) - 52px);
+  }
+  .app.has-banner {
+    height: calc(100vh - var(--header-h) - var(--stage-h, 52px) - 52px - 33px);
+  }
+  .mobile-nav {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .news-stage {
+    padding: 6px 10px;
+  }
+  .news-stage .stage-headline { font-size: 12.5px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .stage-window { width: 72px; }
+  .coach { bottom: 64px; left: 10px; right: 10px; max-width: none; }
+  .chip-row { gap: 4px; }
+  .topbar .stat.primary .v { font-size: 13.5px; }
+}
+
+@media (max-width: 1180px) {
+  .topbar .hide-md { display: none; }
+}
+
+.news-stage .stage-headline.retracted {
+  text-decoration: line-through;
+  color: var(--dim);
+}
+.news-item.is-rumour {
+  border-left: 3px solid var(--warn);
+}
+.news-item.is-rumour .headline { color: var(--warn); }
+
+
+/* ---- ticket panel scroll (centre column) ---- */
+.col.centre .panel.ticket-panel {
+  flex: 0 1 auto;
+  max-height: min(48vh, 520px);
+  overflow: hidden;
+}
+.col.centre .panel.ticket-panel .ticket {
+  overflow: auto;
+  min-height: 0;
+}
+.col.centre .panel.ticket-panel #submitOrder {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.35);
+}
