@@ -54,9 +54,12 @@
     </div>
   </div>
 
-  <div class="stat team-stat hide-md" style="text-align:right">
-    <span class="k" id="memberName"></span>
-    <span class="v team-name" id="teamName"></span>
+  <div class="team-identity hide-md" title="Your team">
+    <span class="team-badge" id="teamBadge" aria-hidden="true">T</span>
+    <div class="team-meta">
+      <span class="team-name" id="teamName"></span>
+      <span class="team-member" id="memberName"></span>
+    </div>
   </div>
 
   <button class="iconbtn" id="themeToggle" title="Switch between light and dark">Theme</button>
@@ -232,7 +235,7 @@
       <button class="tab" data-tab="funds" aria-selected="false">Funds</button>
       <button class="tab" data-tab="board" aria-selected="false">Board</button>
       <button class="tab" data-tab="news" aria-selected="false">
-        News <span class="badge" id="newsCount"></span>
+        Events <span class="badge" id="newsCount"></span>
       </button>
     </div>
 
@@ -285,7 +288,7 @@
   <button data-mobile="more" aria-pressed="false"><span class="dot"></span>More</button>
 </nav>
 
-<!-- More sheet: Funds / Board / News archive -->
+<!-- More sheet: Funds / Board / Events archive -->
 <div class="more-sheet" id="moreSheet" hidden>
   <div class="more-sheet-card">
     <div class="more-sheet-head">
@@ -294,7 +297,7 @@
     </div>
     <button type="button" class="more-item" data-more-tab="funds">Funds</button>
     <button type="button" class="more-item" data-more-tab="board">Board</button>
-    <button type="button" class="more-item" data-more-tab="news">News archive</button>
+    <button type="button" class="more-item" data-more-tab="news">Events archive</button>
   </div>
 </div>
 

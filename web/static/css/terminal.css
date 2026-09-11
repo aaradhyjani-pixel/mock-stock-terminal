@@ -39,7 +39,7 @@
   --warn-bg: rgba(245, 165, 36, 0.14);
   --info: #60a5fa;
 
-  --radius: 4px;
+  --radius: 6px;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
@@ -84,13 +84,26 @@ html, body {
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(45, 212, 167, 0.07), transparent 55%),
+    radial-gradient(900px 500px at 88% 0%, rgba(96, 165, 250, 0.05), transparent 50%),
+    radial-gradient(700px 420px at 50% 110%, rgba(45, 212, 167, 0.04), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+}
+
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(1100px 520px at 10% -8%, rgba(15, 143, 114, 0.08), transparent 55%),
+    radial-gradient(800px 440px at 92% 4%, rgba(37, 99, 235, 0.05), transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
 }
 
 /* Anything that can change value gets tabular figures so columns stay still. */
@@ -163,8 +176,11 @@ a:hover { text-decoration: underline; }
   align-items: center;
   gap: 18px;
   padding: 0 14px;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
   border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent);
   position: sticky;
   top: 0;
   z-index: 40;
@@ -183,7 +199,7 @@ a:hover { text-decoration: underline; }
 }
 .brand .mark {
   width: 22px; height: 22px;
-  border-radius: 3px;
+  border-radius: 5px;
   background: linear-gradient(135deg, var(--accent), var(--accent-dim));
   display: grid; place-items: center;
   color: #04110d; font-size: 12px; font-weight: 800;
@@ -374,7 +390,11 @@ table.grid td {
 }
 table.grid tbody tr { cursor: pointer; }
 table.grid tbody tr:hover { background: var(--panel-2); }
-table.grid tbody tr[aria-selected="true"] { background: var(--accent-ghost); }
+table.grid tbody tr[aria-selected="true"] {
+  background: var(--accent-ghost);
+  box-shadow: inset 3px 0 0 var(--accent), 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+table.grid tbody tr[aria-selected="true"] .sym { color: var(--accent); }
 table.grid tbody tr:last-child td { border-bottom: none; }
 table.grid .sym { font-weight: 600; }
 table.grid .co {
@@ -457,8 +477,24 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #04110d; }
 .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
-.btn.buy { background: var(--up); border-color: var(--up); color: #04150d; }
-.btn.sell { background: var(--down); border-color: var(--down); color: #fff; }
+.btn.buy {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--up) 92%, #fff), var(--up));
+  border-color: color-mix(in srgb, var(--up) 70%, #000);
+  color: #04150d;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--up) 35%, transparent), 0 6px 18px rgba(52, 211, 153, 0.22);
+}
+.btn.sell {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--down) 88%, #fff), var(--down));
+  border-color: color-mix(in srgb, var(--down) 65%, #000);
+  color: #fff;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--down) 35%, transparent), 0 6px 18px rgba(242, 85, 90, 0.22);
+}
+.btn.buy:hover:not(:disabled),
+.btn.sell:hover:not(:disabled) { filter: brightness(1.06); }
 .btn.danger { background: var(--down-bg); border-color: var(--down); color: var(--down); }
 .btn.ghost { background: transparent; }
 .btn.sm { padding: 4px 8px; font-size: 11px; }
@@ -479,8 +515,16 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   cursor: pointer;
 }
 .segmented button[aria-pressed="true"] { background: var(--panel-3); color: var(--text); }
-.segmented.sides button[aria-pressed="true"][data-side="BUY"] { background: var(--up); color: #04150d; }
-.segmented.sides button[aria-pressed="true"][data-side="SELL"] { background: var(--down); color: #fff; }
+.segmented.sides button[aria-pressed="true"][data-side="BUY"] {
+  background: var(--up);
+  color: #04150d;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--up) 40%, transparent);
+}
+.segmented.sides button[aria-pressed="true"][data-side="SELL"] {
+  background: var(--down);
+  color: #fff;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--down) 40%, transparent);
+}
 
 /* ------------------------------------------------------------- order ticket */
 
@@ -642,26 +686,54 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   display: grid;
   place-items: center;
   padding: 20px;
+  position: relative;
+  background:
+    radial-gradient(900px 520px at 18% 12%, rgba(45, 212, 167, 0.14), transparent 58%),
+    radial-gradient(720px 480px at 86% 18%, rgba(96, 165, 250, 0.09), transparent 55%),
+    radial-gradient(640px 400px at 50% 100%, rgba(45, 212, 167, 0.07), transparent 60%),
+    var(--bg);
+}
+:root[data-theme="light"] .login-page {
+  background:
+    radial-gradient(900px 520px at 18% 12%, rgba(15, 143, 114, 0.12), transparent 58%),
+    radial-gradient(720px 480px at 86% 18%, rgba(37, 99, 235, 0.07), transparent 55%),
+    var(--bg);
 }
 .login-card {
-  width: min(400px, 100%);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 26px;
-  box-shadow: var(--shadow);
+  width: min(420px, 100%);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, var(--accent));
+  border-radius: 12px;
+  padding: 28px 28px 24px;
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
 }
 .login-card .brand { font-size: 17px; margin-bottom: 4px; }
-.login-card form { display: flex; flex-direction: column; gap: 13px; margin-top: 20px; }
+.login-card .brand .mark {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  border-radius: 7px;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.login-hint { margin: 10px 0 0; font-size: 12.5px; line-height: 1.4; }
+.login-card form { display: flex; flex-direction: column; gap: 13px; margin-top: 22px; }
 .login-status {
-  margin-top: 16px;
-  padding: 9px 11px;
-  background: var(--panel-2);
+  margin-top: 18px;
+  padding: 11px 12px;
+  background: color-mix(in srgb, var(--panel-2) 85%, transparent);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: calc(var(--radius) + 2px);
   font-size: 12px;
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
 }
+.login-status .label { letter-spacing: 0.1em; }
+.login-status b { font-size: 13px; }
 .error-box {
   background: var(--down-bg);
   border: 1px solid var(--down);
@@ -852,7 +924,53 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .topbar .team-name {
   font-family: var(--sans) !important;
   font-size: 12px !important;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.team-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  background: color-mix(in srgb, var(--panel-2) 90%, var(--accent-ghost));
+  border: 1px solid color-mix(in srgb, var(--line) 75%, var(--accent));
+  border-radius: 999px;
+  max-width: 180px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.team-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+  color: #04110d;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+.team-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  line-height: 1.15;
+}
+.team-identity .team-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.team-member {
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chip-row {
@@ -1237,11 +1355,12 @@ body.has-offline .app {
   color: var(--text);
 }
 .login-tagline {
-  margin: 8px 0 0;
-  font-size: 13px;
-  line-height: 1.4;
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 /* ---- desktop shortcuts hint bar ---- */
@@ -1529,4 +1648,48 @@ html.news-action .app {
 
 @media (prefers-reduced-motion: reduce) {
   .sym-chip { transition: none; }
+}
+
+
+/* ============================================================ Visual polish
+ * Atmospheric mesh, glass chrome, decisive ticket — judgment-sport density.
+ * ============================================================ */
+
+.panel {
+  border-radius: calc(var(--radius) + 2px);
+}
+
+.clock {
+  border-radius: calc(var(--radius) + 2px);
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent);
+}
+
+/* Selected watch glow — calm pulse only when motion is allowed */
+@keyframes select-glow {
+  from { box-shadow: inset 3px 0 0 var(--accent), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent); }
+  to { box-shadow: inset 3px 0 0 var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 28%, transparent); }
+}
+#watchTable tbody tr[aria-selected="true"] {
+  animation: select-glow 1.8s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  #watchTable tbody tr[aria-selected="true"] { animation: none; }
+  .btn.buy, .btn.sell { box-shadow: none; }
+  .login-card .brand .mark { box-shadow: none; }
+  body, .login-page { background-attachment: scroll; }
+}
+
+:root[data-theme="light"] .topbar {
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 10%, transparent);
+}
+:root[data-theme="light"] .login-card {
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+:root[data-theme="light"] .btn.buy {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--up) 25%, transparent), 0 4px 12px rgba(16, 134, 79, 0.15);
+}
+:root[data-theme="light"] .btn.sell {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--down) 25%, transparent), 0 4px 12px rgba(196, 52, 47, 0.14);
 }

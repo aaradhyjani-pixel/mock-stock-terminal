@@ -67,6 +67,8 @@ async function boot() {
 
   el("teamName").textContent = state.me.team.name;
   el("memberName").textContent = state.me.member.name;
+  const badge = el("teamBadge");
+  if (badge) badge.textContent = (state.me.team.name || "T").trim().charAt(0).toUpperCase() || "T";
 
   wireChrome();
   wireTicket();
