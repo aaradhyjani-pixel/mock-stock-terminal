@@ -67,13 +67,14 @@
 <div class="banner" id="banner" data-severity="info" hidden></div>
 
 <!-- Persistent news / rumour stage (above the three columns) -->
-<section class="news-stage" id="newsStage" aria-live="polite">
+<section class="news-stage" id="newsStage" aria-live="polite" data-mode="idle">
   <div class="stage-inner">
     <div class="stage-kind">
       <span class="pill" id="stageKindPill">Waiting</span>
     </div>
     <div class="stage-body">
-      <div class="stage-headline" id="stageHeadline">Headlines will appear here as they break.</div>
+      <div class="stage-kicker" id="stageKicker">Events desk</div>
+      <div class="stage-headline" id="stageHeadline">When headlines break, they land here first — trade the story.</div>
       <div class="stage-meta">
         <span class="stage-time" id="stageTime"></span>
         <span class="stage-symbols" id="stageSymbols"></span>
@@ -82,6 +83,7 @@
     <div class="stage-window" id="stageWindow" hidden>
       <span class="stage-window-label">Decide</span>
       <div class="stage-window-meter"><span id="stageWindowBar"></span></div>
+      <span class="stage-window-secs" id="stageWindowSecs"></span>
     </div>
   </div>
 </section>
@@ -223,21 +225,6 @@
 
   <!-- ---------------------------------------------------------------- right -->
   <section class="col right" data-col="right">
-    <!-- Pulse dock — desktop coaching strip (local only; not ranked) -->
-    <aside class="pulse-dock" id="pulseDock" aria-label="Pulse coaching">
-      <div class="pulse-dock-head">
-        <span class="pulse-dock-mark">Pulse</span>
-        <span class="pulse-dock-sub">personal · not ranked</span>
-      </div>
-      <div class="pulse-chips" id="pulseChips">
-        <span class="pulse-chip" data-stat="reacted"><b id="pulseReacted">0</b> Reacted</span>
-        <span class="pulse-chip" data-stat="hesitated"><b id="pulseHesitated">0</b> Hesitated</span>
-        <span class="pulse-chip" data-stat="chased"><b id="pulseChased">0</b> Chased</span>
-        <span class="pulse-chip" data-stat="sized_hard"><b id="pulseSized">0</b> Sized hard</span>
-        <span class="pulse-chip" data-stat="clean_entry"><b id="pulseClean">0</b> Clean</span>
-      </div>
-      <div class="pulse-last" id="pulseLast"><span class="dim">No moments yet — trade the story.</span></div>
-    </aside>
 
     <div class="tabs" id="rightTabs">
       <button class="tab" data-tab="book" aria-selected="true">

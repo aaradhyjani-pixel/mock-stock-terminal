@@ -971,21 +971,21 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 
 /* Watchlist pulse when a news symbol is mentioned */
-@keyframes pulse-news-row {
+@keyframes news-hit-row {
   0%, 100% { background: transparent; }
   30% { background: var(--accent-ghost); }
   60% { background: rgba(45, 212, 167, 0.22); }
 }
-@keyframes pulse-rumour-row {
+@keyframes rumour-hit-row {
   0%, 100% { background: transparent; }
   30% { background: var(--warn-bg); }
   60% { background: rgba(245, 165, 36, 0.22); }
 }
-table.grid tbody tr.pulse-news { animation: pulse-news-row 1.1s ease-in-out 3; }
-table.grid tbody tr.pulse-rumour { animation: pulse-rumour-row 1.1s ease-in-out 3; }
+table.grid tbody tr.news-hit { animation: news-hit-row 1.1s ease-in-out 3; }
+table.grid tbody tr.rumour-hit { animation: rumour-hit-row 1.1s ease-in-out 3; }
 @media (prefers-reduced-motion: reduce) {
-  table.grid tbody tr.pulse-news,
-  table.grid tbody tr.pulse-rumour { animation: none; background: var(--accent-ghost); }
+  table.grid tbody tr.news-hit,
+  table.grid tbody tr.rumour-hit { animation: none; background: var(--accent-ghost); }
 }
 
 /* Layout: account for news stage under the header */
@@ -1215,8 +1215,8 @@ body.has-offline .app {
   box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.35);
 }
 
-/* ============================================================ Desktop 10x Pulse
- * Desktop-first visibility + Pulse dock + shortcuts + action ambience.
+/* ============================================================ Desktop 10x
+ * Desktop-first visibility + shortcuts + action ambience.
  * ============================================================ */
 
 .brand .wordmark {
@@ -1269,126 +1269,20 @@ body.has-offline .app {
 }
 .shortcuts-bar span { margin-right: 10px; }
 
-/* ---- Pulse dock ---- */
-.pulse-dock {
-  display: none;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, var(--panel-2), var(--panel));
-  flex-shrink: 0;
-}
-.pulse-dock-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.pulse-dock-mark {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-.pulse-dock-sub {
-  font-size: 10px;
-  color: var(--dim);
-}
-.pulse-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.pulse-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--panel-3);
-  border: 1px solid var(--line);
-  font-size: 10px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.pulse-chip b {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.pulse-last {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 11px;
-  min-height: 18px;
-}
-.pulse-label {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 7px;
-  border-radius: 3px;
-  background: var(--accent-ghost);
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.pulse-tag {
-  display: inline-flex;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--panel-3);
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.pulse-last-detail { color: var(--muted); font-family: var(--mono); font-size: 11px; }
-.pulse-dock.window-open {
-  border-bottom-color: var(--accent-dim);
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-/* Premium Pulse moment toast */
-.toast.pulse-moment {
-  border-left-width: 4px;
-  min-width: 260px;
-  padding: 12px 14px;
-  background: var(--panel-3);
-  box-shadow: var(--shadow);
-}
-.toast.pulse-moment .pulse-moment-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-.toast.pulse-moment .pulse-price {
-  font-family: var(--mono);
-  font-weight: 700;
-  font-size: 13px;
-  margin-bottom: 2px;
-}
 
 /* ---- ACTION ambience while decision window is live ---- */
-html.pulse-action .news-stage.live {
+html.news-action .news-stage.live {
   box-shadow: 0 0 0 1px var(--accent-dim), 0 8px 28px rgba(45, 212, 167, 0.12);
 }
-html.pulse-action .col.centre .panel.ticket-panel {
+html.news-action .col.centre .panel.ticket-panel {
   border-color: var(--accent-dim);
 }
-html.pulse-action .app {
+html.news-action .app {
   /* subtle panel accent without motion spam */
   outline: 1px solid transparent;
 }
 @media (prefers-reduced-motion: reduce) {
-  html.pulse-action .news-stage.live {
+  html.news-action .news-stage.live {
     box-shadow: none;
     border-bottom-width: 2px;
   }
@@ -1448,12 +1342,10 @@ html.pulse-action .app {
   .ticket .quotes .v { font-size: 16px; }
 
   /* Pulse dock visible on desktop */
-  .pulse-dock { display: flex; }
 }
 
 /* Collapse / hide Pulse + shortcuts on smaller screens */
 @media (max-width: 1099px) {
-  .pulse-dock { display: none !important; }
   .shortcuts-bar { display: none !important; }
   .hide-narrow { display: none !important; }
 }
@@ -1466,4 +1358,82 @@ html.pulse-action .app {
   .app.has-banner {
     height: calc(100vh - var(--header-h) - var(--stage-h, 52px) - 26px - 33px);
   }
+}
+
+/* ---- Events stage (cinematic) ---- */
+.news-stage {
+  position: relative;
+  overflow: hidden;
+}
+.news-stage .stage-kicker {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.news-stage .stage-headline {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.news-stage[data-mode="breaking"] {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: linear-gradient(90deg, var(--accent-ghost), transparent 42%);
+}
+.news-stage[data-mode="rumour"] {
+  box-shadow: inset 3px 0 0 var(--warn);
+  background: linear-gradient(90deg, var(--warn-bg), transparent 42%);
+}
+.news-stage.slam .stage-headline {
+  animation: headline-slam 0.45s ease-out;
+}
+@keyframes headline-slam {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .news-stage.slam .stage-headline { animation: none; }
+}
+.sym-chip {
+  appearance: none;
+  border: 1px solid var(--accent-dim);
+  background: var(--accent-ghost);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sym-chip:hover { background: var(--accent); color: #04110d; }
+.stage-window-secs {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 2ch;
+}
+.event-card {
+  display: grid;
+  grid-template-columns: 4px 1fr;
+  gap: 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.event-rail {
+  background: var(--accent);
+  opacity: 0.35;
+}
+.event-card.is-rumour .event-rail { background: var(--warn); }
+.event-card.retracted .event-rail { background: var(--down); }
+.event-main { padding: 10px 12px; }
+.events-empty { padding: 18px 14px; line-height: 1.45; }
+.events-empty-title { font-weight: 700; margin-bottom: 6px; color: var(--text); }
+
+@media (min-width: 1100px) {
+  .news-stage .stage-headline { font-size: 22px; }
+  .news-stage { min-height: 72px; }
 }

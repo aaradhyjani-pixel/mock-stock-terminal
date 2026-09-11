@@ -15,7 +15,6 @@
 import { api } from "./api.js";
 import { CandleChart, toCandles } from "./chart.js";
 import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, shortTime, signClass } from "./format.js";
-import { createPulse } from "./pulse.js";
 import { Stream } from "./stream.js";
 
 const el = (id) => document.getElementById(id);
@@ -46,16 +45,12 @@ const state = {
   interval: "1m",
   lastRank: null,
   lastRankToastAt: 0,
-  pulseSymbols: new Map(),   // symbol -> { until, kind }
+  newsHighlights: new Map(),   // symbol -> { until, kind }
   decisionTimer: null,
+  decisionTick: null,
 };
 
 const stream = new Stream("/ws");
-
-/* Pulse — personal coaching; never touches rank/cash. */
-const pulse = createPulse({
-  onUpdate: (snap) => renderPulseDock(snap),
-});
 
 /* ------------------------------------------------------------------ startup */
 
@@ -71,8 +66,6 @@ async function boot() {
 
   el("teamName").textContent = state.me.team.name;
   el("memberName").textContent = state.me.member.name;
-  pulse.setTeamId(state.me.team?.id);
-  renderPulseDock(pulse.getSnapshot());
 
   wireChrome();
   wireTicket();
@@ -354,23 +347,11 @@ function wireStream() {
     const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
       ? ` Slippage ${pct(slip)}.`
       : "";
-    const moment = pulse.onFill({
-      symbol: fill.symbol,
-      side: fill.side,
-      qty: fill.qty,
-      price: fill.price,
-      priceDisplay: inr(fill.price),
-      fees: fill.fees,
-      slippagePct: slip,
-    });
-    // Pulse moment card is the rich desktop feedback; fall back to classic toast if Pulse skipped.
-    if (!moment) {
       toast(
         fill.side === "BUY" ? "up" : "down",
         `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol} @ ${inr(fill.price)}`,
         `Filled.${slipNote} Charges ${inr(fill.fees)}.`,
       );
-    }
     state.lastPreviewSlippage = null;
     loadOrders();
   });
@@ -380,7 +361,7 @@ function wireStream() {
     state.unreadNews += 1;
     renderNews();
     showOnStage(item, { decision: true });
-    pulseWatchSymbols(item.symbols || [], item.kind);
+    highlightNewsSymbols(item.symbols || [], item.kind);
     toast("warn", item.kind === "RUMOUR" ? "Rumour" : "News", item.headline);
     if ((item.symbols || []).includes(state.selected)) loadCandles();
     measureStageHeight();
@@ -486,17 +467,34 @@ function showOnStage(item, { decision = false } = {}) {
   const stage = el("newsStage");
   if (!stage || !item) return;
 
+  const isRumour = item.kind === "RUMOUR";
   stage.dataset.newsId = item.id != null ? String(item.id) : "";
-  stage.classList.toggle("rumour", item.kind === "RUMOUR");
+  stage.dataset.mode = item.retracted ? "retracted" : isRumour ? "rumour" : "breaking";
+  stage.classList.toggle("rumour", isRumour);
   stage.classList.add("live");
+  // Replay slam animation
+  stage.classList.remove("slam");
+  void stage.offsetWidth;
+  stage.classList.add("slam");
 
   const pill = el("stageKindPill");
-  pill.textContent = item.retracted ? "Retracted" : (item.kind || "News");
-  pill.className = `pill ${
-    item.retracted ? "down"
-      : item.kind === "RUMOUR" ? "warn"
-        : item.kind === "RESULTS" ? "accent" : "accent"
-  }`;
+  if (item.retracted) {
+    pill.textContent = "Retracted";
+    pill.className = "pill down";
+  } else if (isRumour) {
+    pill.textContent = "Rumour";
+    pill.className = "pill warn";
+  } else {
+    pill.textContent = "Breaking";
+    pill.className = "pill accent";
+  }
+
+  const kicker = el("stageKicker");
+  if (kicker) {
+    kicker.textContent = isRumour
+      ? "Unverified — trade carefully"
+      : "Live from the events desk";
+  }
 
   const headline = el("stageHeadline");
   headline.textContent = item.headline || "";
@@ -507,7 +505,7 @@ function showOnStage(item, { decision = false } = {}) {
   const symBox = el("stageSymbols");
   const symbols = item.symbols || [];
   symBox.innerHTML = symbols
-    .map((s) => `<span class="pill accent" data-stage-sym="${escapeHtml(s)}">${escapeHtml(s)}</span>`)
+    .map((s) => `<button type="button" class="sym-chip" data-stage-sym="${escapeHtml(s)}">${escapeHtml(s)}</button>`)
     .join("");
   symBox.querySelectorAll("[data-stage-sym]").forEach((tag) => {
     tag.addEventListener("click", () => {
@@ -515,43 +513,55 @@ function showOnStage(item, { decision = false } = {}) {
     });
   });
 
+  // Jump participants into the story stock on a fresh break.
+  if (decision && !item.retracted && symbols.length && state.instruments.has(symbols[0])) {
+    select(symbols[0], { focus: false });
+  }
+
   const windowEl = el("stageWindow");
   const bar = el("stageWindowBar");
+  const secsEl = el("stageWindowSecs");
   clearTimeout(state.decisionTimer);
+  if (state.decisionTick) clearInterval(state.decisionTick);
   if (decision && !item.retracted) {
     windowEl.hidden = false;
-    // Restart CSS animation by reflowing the bar.
+    const ends = Date.now() + DECISION_MS;
     bar.style.animation = "none";
     void bar.offsetWidth;
     bar.style.animation = "";
-    pulse.onDecisionStart(symbols, { id: item.id, kind: item.kind, durationMs: DECISION_MS });
+    const tick = () => {
+      const left = Math.max(0, ends - Date.now());
+      if (secsEl) secsEl.textContent = `${Math.ceil(left / 1000)}s`;
+      if (left <= 0 && state.decisionTick) clearInterval(state.decisionTick);
+    };
+    tick();
+    state.decisionTick = setInterval(tick, 200);
     state.decisionTimer = setTimeout(() => {
       windowEl.hidden = true;
-      stage.classList.remove("live");
-      // Pulse auto-closes on its own timer; keep stage chrome in sync.
+      stage.classList.remove("live", "slam");
+      stage.dataset.mode = "idle";
+      if (secsEl) secsEl.textContent = "";
       measureStageHeight();
     }, DECISION_MS);
   } else {
     windowEl.hidden = true;
-    if (!decision) {
-      /* seed / archive view — do not open a coaching window */
-    }
+    if (secsEl) secsEl.textContent = "";
   }
   measureStageHeight();
 }
 
-function pulseWatchSymbols(symbols, kind) {
+function highlightNewsSymbols(symbols, kind) {
   const until = Date.now() + DECISION_MS;
-  const pulseKind = kind === "RUMOUR" ? "rumour" : "news";
+  const hitKind = kind === "RUMOUR" ? "rumour" : "news";
   for (const symbol of symbols) {
     if (!state.instruments.has(symbol)) continue;
-    state.pulseSymbols.set(symbol, { until, kind: pulseKind });
+    state.newsHighlights.set(symbol, { until, kind: hitKind });
   }
   renderWatchlist();
   setTimeout(() => {
     const now = Date.now();
-    for (const [sym, meta] of state.pulseSymbols) {
-      if (meta.until <= now) state.pulseSymbols.delete(sym);
+    for (const [sym, meta] of state.newsHighlights) {
+      if (meta.until <= now) state.newsHighlights.delete(sym);
     }
     renderWatchlist();
   }, DECISION_MS + 50);
@@ -586,11 +596,11 @@ function renderWatchlist() {
   body.innerHTML = rows.map((row) => {
     const cls = signClass(row.change_pct);
     const badge = statusBadge(row);
-    const pulse = state.pulseSymbols.get(row.symbol);
-    const pulseClass = pulse && pulse.until > now
-      ? (pulse.kind === "rumour" ? "pulse-rumour" : "pulse-news")
+    const hit = state.newsHighlights.get(row.symbol);
+    const hitClass = hit && hit.until > now
+      ? (hit.kind === "rumour" ? "rumour-hit" : "news-hit")
       : "";
-    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" class="${pulseClass}" aria-selected="${row.symbol === state.selected}">
+    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" class="${hitClass}" aria-selected="${row.symbol === state.selected}">
       <td><div class="sym">${row.symbol}${badge}</div><div class="co">${escapeHtml(row.name)}</div></td>
       <td class="num price">${inr(row.last)}</td>
       <td class="num ${cls}">${pct(row.change_pct)}</td>
@@ -863,14 +873,6 @@ async function submitOrder(event) {
       toast("down", "Order rejected", order.reason || "");
     } else if (order.status === "FILLED") {
       const slip = state.lastPreviewSlippage;
-      const moment = pulse.onFill({
-        symbol: order.symbol,
-        side: order.side,
-        qty: order.filled_qty,
-        price: order.avg_price,
-        priceDisplay: inr(order.avg_price),
-        slippagePct: slip,
-      });
       if (!moment) {
         const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
           ? ` Slippage ${pct(slip)}.`
@@ -1081,27 +1083,45 @@ function updateBookCount() {
 function renderNews() {
   const box = el("newsList");
   if (!state.news.length) {
-    box.innerHTML = '<div class="empty">No news yet. Headlines appear here as they break.</div>';
+    box.innerHTML = `<div class="empty events-empty">
+      <div class="events-empty-title">Events desk is quiet</div>
+      <div>When headlines and rumours break, they land here — and on the stage above. Tap a related stock chip to jump straight into the story.</div>
+    </div>`;
     return;
   }
   el("newsCount").textContent = state.unreadNews || "";
 
-  box.innerHTML = state.news.slice(0, 80).map((item, index) => `
-    <div class="news-item ${item.retracted ? "retracted" : ""} ${item.kind === "RUMOUR" ? "is-rumour" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
-      <div class="top">
-        <span class="pill ${item.kind === "RUMOUR" ? "warn" : item.kind === "RESULTS" ? "accent" : ""}">${item.kind}</span>
-        ${item.retracted ? '<span class="pill down">Retracted</span>' : ""}
-        <span class="time">${shortTime(item.published_at)}</span>
+  box.innerHTML = state.news.slice(0, 80).map((item, index) => {
+    const kind = item.retracted ? "Retracted"
+      : item.kind === "RUMOUR" ? "Rumour"
+        : item.kind === "RESULTS" ? "Results" : "Breaking";
+    const kindClass = item.retracted ? "down"
+      : item.kind === "RUMOUR" ? "warn" : "accent";
+    return `
+    <article class="news-item event-card ${item.retracted ? "retracted" : ""} ${item.kind === "RUMOUR" ? "is-rumour" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
+      <div class="event-rail" aria-hidden="true"></div>
+      <div class="event-main">
+        <div class="top">
+          <span class="pill ${kindClass}">${kind}</span>
+          <span class="time">${shortTime(item.published_at)}</span>
+        </div>
+        <div class="headline">${escapeHtml(item.headline)}</div>
+        <div class="body">${escapeHtml(item.body || "")}</div>
+        ${(item.symbols || []).length
+          ? `<div class="tags">${item.symbols.map((s) => `<button type="button" class="sym-chip" data-sym="${s}">${s}</button>`).join("")}</div>`
+          : ""}
       </div>
-      <div class="headline">${escapeHtml(item.headline)}</div>
-      <div class="body">${escapeHtml(item.body || "")}</div>
-      ${(item.symbols || []).length
-        ? `<div class="tags">${item.symbols.map((s) => `<span class="pill accent" data-sym="${s}">${s}</span>`).join("")}</div>`
-        : ""}
-    </div>`).join("");
+    </article>`;
+  }).join("");
 
   box.querySelectorAll(".news-item").forEach((node) => {
-    node.addEventListener("click", () => node.classList.toggle("open"));
+    node.addEventListener("click", (event) => {
+      if (event.target.closest("[data-sym]")) return;
+      node.classList.toggle("open");
+      const id = Number(node.dataset.news);
+      const item = state.news.find((n) => n.id === id);
+      if (item) showOnStage(item, { decision: false });
+    });
   });
   box.querySelectorAll("[data-sym]").forEach((tag) => {
     tag.addEventListener("click", (event) => {
@@ -1339,31 +1359,6 @@ function tickClock() {
 
 /* ------------------------------------------------------------- Pulse */
 
-function renderPulseDock(snap) {
-  const dock = el("pulseDock");
-  if (!dock || !snap) return;
-  const s = snap.stats || {};
-  const set = (id, n) => { const node = el(id); if (node) node.textContent = String(n ?? 0); };
-  set("pulseReacted", s.reacted);
-  set("pulseHesitated", s.hesitated);
-  set("pulseChased", s.chased);
-  set("pulseSized", s.sized_hard);
-  set("pulseClean", s.clean_entry);
-  dock.classList.toggle("window-open", Boolean(snap.windowOpen));
-  const last = el("pulseLast");
-  if (!last) return;
-  if (snap.lastMoment) {
-    const m = snap.lastMoment;
-    const tags = (m.tags || []).filter((t) => t !== m.label).slice(0, 2)
-      .map((t) => `<span class="pulse-tag">${escapeHtml(t)}</span>`).join("");
-    const detail = m.symbol
-      ? `${escapeHtml(m.side || "")} ${escapeHtml(String(m.qty ?? ""))} ${escapeHtml(m.symbol)}`
-      : escapeHtml(m.blurb || "");
-    last.innerHTML = `<span class="pulse-label">${escapeHtml(m.label)}</span>${tags}<span class="pulse-last-detail">${detail}</span>`;
-  } else {
-    last.innerHTML = `<span class="dim">No moments yet — trade the story.</span>`;
-  }
-}
 
 /* ------------------------------------------------------------------- toasts */
 
