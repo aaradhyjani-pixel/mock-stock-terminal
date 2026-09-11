@@ -85,6 +85,21 @@ export function shortTime(iso) {
   return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
+/** Compact relative clock for the Events desk (e.g. "12s ago", "3m ago"). */
+export function relativeTime(iso) {
+  if (!iso) return "-";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "-";
+  const sec = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return shortTime(iso);
+}
+
 export function escapeHtml(text) {
   return String(text ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",

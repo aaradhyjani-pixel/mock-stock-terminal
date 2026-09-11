@@ -253,7 +253,7 @@ async def test_the_market_endpoint_works_without_signing_in(client: AsyncClient)
     body = (await client.get("/api/market")).json()
     assert body["state"] == "PRE_OPEN"
     assert body["day_no"] == 2
-    assert body["rules"]["max_leverage"] == "5"
+    assert body["rules"]["max_leverage"] == "1.50"
 
 
 async def test_the_leaderboard_always_shows_you_your_own_rank(client: AsyncClient):

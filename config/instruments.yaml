@@ -1,4 +1,4 @@
-# The basket: 25 NSE names across eight sectors.
+# The basket: NSE/BSE names across eight sectors.
 #
 # IMPORTANT: refresh start_price from the live market a day or two before the
 # event. The prices below are placeholders so the system runs out of the box;
@@ -239,3 +239,27 @@ instruments:
     liquidity_notional: "4000000"
     band_pct: "20"
     index_weight: "2"
+
+  # ---- Consumer internet (quick commerce / food delivery)
+  - symbol: ETERNAL
+    name: Eternal Ltd
+    sector: Consumer Internet
+    # Parent of Zomato and Blinkit. NSE:ETERNAL. Refresh before the event.
+    start_price: "320.60"
+    spread_bps: "15"
+    daily_vol_pct: "2.4"
+    liquidity_notional: "12000000"
+    index_weight: "3"
+
+  # ---- Jewellery (BSE)
+  - symbol: SHANKESH
+    name: Shankesh Jewellers Ltd
+    sector: Jewellery
+    # BSE:544882 / SHANKESH. ISIN INE1WFC01025. Listed Aug 2026.
+    # start_price refreshed from BSE quote ~11 Sep 2026 (~₹104.90).
+    start_price: "104.90"
+    spread_bps: "40"
+    daily_vol_pct: "3.5"
+    liquidity_notional: "3000000"
+    band_pct: "20"
+    index_weight: "1"

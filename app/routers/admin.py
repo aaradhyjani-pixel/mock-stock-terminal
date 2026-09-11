@@ -1194,6 +1194,7 @@ async def upsert_instrument(
                 start_price=payload.start_price,
                 name=payload.name,
                 sector=payload.sector,
+                status=InstrumentStatus.ACTIVE,
             )
             session.add(instrument)
         for field in (

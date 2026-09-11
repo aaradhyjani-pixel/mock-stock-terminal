@@ -15,7 +15,7 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">
+  <div class="brand" title="Trading Terminal">
     <span class="mark">M</span>
     <span class="hide-sm">Terminal</span>
   </div>
@@ -67,24 +67,33 @@
 <div class="banner" id="banner" data-severity="info" hidden></div>
 
 <!-- Persistent news / rumour stage (above the three columns) -->
-<section class="news-stage" id="newsStage" aria-live="polite">
+<section class="news-stage" id="newsStage" aria-live="polite" data-mode="idle">
   <div class="stage-inner">
     <div class="stage-kind">
       <span class="pill" id="stageKindPill">Waiting</span>
     </div>
     <div class="stage-body">
-      <div class="stage-headline" id="stageHeadline">Headlines will appear here as they break.</div>
+      <div class="stage-kicker" id="stageKicker">Events desk</div>
+      <div class="stage-headline" id="stageHeadline">When headlines break, they land here first — trade the story.</div>
       <div class="stage-meta">
         <span class="stage-time" id="stageTime"></span>
         <span class="stage-symbols" id="stageSymbols"></span>
       </div>
     </div>
-    <div class="stage-window" id="stageWindow" hidden>
-      <span class="stage-window-label">Decide</span>
+    <div class="stage-window" id="stageWindow" hidden data-kind="breaking">
+      <span class="stage-window-label" id="stageWindowLabel">Decide · 12s</span>
       <div class="stage-window-meter"><span id="stageWindowBar"></span></div>
     </div>
   </div>
 </section>
+
+<!-- Desktop shortcuts hint (keys already wired in terminal.js) -->
+<div class="shortcuts-bar hide-narrow" id="shortcutsBar" aria-hidden="true">
+  <span class="shortcuts-label">Shortcuts</span>
+  <kbd>B</kbd><span>Buy</span>
+  <kbd>S</kbd><span>Sell</span>
+  <kbd>/</kbd><span>Filter</span>
+</div>
 
 <main class="app" id="app">
 
@@ -215,6 +224,7 @@
 
   <!-- ---------------------------------------------------------------- right -->
   <section class="col right" data-col="right">
+
     <div class="tabs" id="rightTabs">
       <button class="tab" data-tab="book" aria-selected="true">
         Book <span class="badge" id="bookCount"></span>

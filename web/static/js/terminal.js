@@ -14,7 +14,7 @@
 
 import { api } from "./api.js";
 import { CandleChart, toCandles } from "./chart.js";
-import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, shortTime, signClass } from "./format.js";
+import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, relativeTime, shortTime, signClass } from "./format.js";
 import { Stream } from "./stream.js";
 
 const el = (id) => document.getElementById(id);
@@ -45,8 +45,10 @@ const state = {
   interval: "1m",
   lastRank: null,
   lastRankToastAt: 0,
-  pulseSymbols: new Map(),   // symbol -> { until, kind }
+  newsHighlights: new Map(),   // symbol -> { until, kind }
   decisionTimer: null,
+  decisionTick: null,
+  slamTimer: null,
 };
 
 const stream = new Stream("/ws");
@@ -113,6 +115,7 @@ async function boot() {
   maybeShowCoach();
   measureStageHeight();
   window.addEventListener("resize", measureStageHeight);
+  document.title = "Trading Terminal";
 }
 
 
@@ -345,11 +348,11 @@ function wireStream() {
     const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
       ? ` Slippage ${pct(slip)}.`
       : "";
-    toast(
-      fill.side === "BUY" ? "up" : "down",
-      `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol} @ ${inr(fill.price)}`,
-      `Filled.${slipNote} Charges ${inr(fill.fees)}.`,
-    );
+      toast(
+        fill.side === "BUY" ? "up" : "down",
+        `${fill.side} ${fmtQty(fill.qty)} ${fill.symbol} @ ${inr(fill.price)}`,
+        `Filled.${slipNote} Charges ${inr(fill.fees)}.`,
+      );
     state.lastPreviewSlippage = null;
     loadOrders();
   });
@@ -359,7 +362,7 @@ function wireStream() {
     state.unreadNews += 1;
     renderNews();
     showOnStage(item, { decision: true });
-    pulseWatchSymbols(item.symbols || [], item.kind);
+    highlightNewsSymbols(item.symbols || [], item.kind);
     toast("warn", item.kind === "RUMOUR" ? "Rumour" : "News", item.headline);
     if ((item.symbols || []).includes(state.selected)) loadCandles();
     measureStageHeight();
@@ -465,67 +468,140 @@ function showOnStage(item, { decision = false } = {}) {
   const stage = el("newsStage");
   if (!stage || !item) return;
 
+  const isRumour = item.kind === "RUMOUR";
+  const mode = item.retracted ? "retracted" : isRumour ? "rumour" : "breaking";
   stage.dataset.newsId = item.id != null ? String(item.id) : "";
-  stage.classList.toggle("rumour", item.kind === "RUMOUR");
+  stage.dataset.mode = mode;
+  stage.classList.toggle("rumour", isRumour && !item.retracted);
   stage.classList.add("live");
 
+  // Replay slam / flash with distinct timing for BREAKING vs RUMOUR.
+  stage.classList.remove("slam", "flash", "slam-breaking", "slam-rumour");
+  void stage.offsetWidth;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduceMotion) {
+    const slamKind = isRumour ? "slam-rumour" : "slam-breaking";
+    stage.classList.add("slam", "flash", slamKind);
+    clearTimeout(state.slamTimer);
+    state.slamTimer = setTimeout(() => {
+      stage.classList.remove("slam", "flash", "slam-breaking", "slam-rumour");
+    }, 650);
+  }
+
   const pill = el("stageKindPill");
-  pill.textContent = item.retracted ? "Retracted" : (item.kind || "News");
-  pill.className = `pill ${
-    item.retracted ? "down"
-      : item.kind === "RUMOUR" ? "warn"
-        : item.kind === "RESULTS" ? "accent" : "accent"
-  }`;
+  if (item.retracted) {
+    pill.textContent = "Retracted";
+    pill.className = "pill down";
+  } else if (isRumour) {
+    pill.textContent = "Rumour";
+    pill.className = "pill warn";
+  } else {
+    pill.textContent = "Breaking";
+    pill.className = "pill accent";
+  }
+
+  const kicker = el("stageKicker");
+  if (kicker) {
+    kicker.textContent = item.retracted
+      ? "Retracted — do not trade on this"
+      : isRumour
+        ? "Unverified — trade carefully"
+        : "Live from the events desk";
+  }
 
   const headline = el("stageHeadline");
   headline.textContent = item.headline || "";
   headline.classList.toggle("retracted", Boolean(item.retracted));
 
-  el("stageTime").textContent = item.published_at ? shortTime(item.published_at) : "";
+  el("stageTime").textContent = item.published_at ? relativeTime(item.published_at) : "";
 
   const symBox = el("stageSymbols");
   const symbols = item.symbols || [];
   symBox.innerHTML = symbols
-    .map((s) => `<span class="pill accent" data-stage-sym="${escapeHtml(s)}">${escapeHtml(s)}</span>`)
+    .map((s) => `<button type="button" class="sym-chip" data-stage-sym="${escapeHtml(s)}">${escapeHtml(s)}</button>`)
     .join("");
   symBox.querySelectorAll("[data-stage-sym]").forEach((tag) => {
     tag.addEventListener("click", () => {
-      if (state.instruments.has(tag.dataset.stageSym)) select(tag.dataset.stageSym);
+      if (state.instruments.has(tag.dataset.stageSym)) {
+        select(tag.dataset.stageSym, { focus: true });
+      }
     });
   });
 
+  // Auto-select first related symbol when nothing is selected, or on a live break.
+  const first = symbols.find((s) => state.instruments.has(s));
+  if (first && !item.retracted && (decision || !state.selected)) {
+    select(first, { focus: Boolean(decision) });
+  }
+
   const windowEl = el("stageWindow");
   const bar = el("stageWindowBar");
+  const labelEl = el("stageWindowLabel");
   clearTimeout(state.decisionTimer);
+  if (state.decisionTick) {
+    clearInterval(state.decisionTick);
+    state.decisionTick = null;
+  }
+  document.documentElement.classList.remove("news-action", "news-action-rumour");
+
   if (decision && !item.retracted) {
     windowEl.hidden = false;
-    // Restart CSS animation by reflowing the bar.
-    bar.style.animation = "none";
-    void bar.offsetWidth;
-    bar.style.animation = "";
+    windowEl.dataset.kind = isRumour ? "rumour" : "breaking";
+    document.documentElement.classList.add("news-action");
+    if (isRumour) document.documentElement.classList.add("news-action-rumour");
+
+    const ends = Date.now() + DECISION_MS;
+    if (bar) {
+      bar.style.animation = "none";
+      bar.style.transform = "";
+      void bar.offsetWidth;
+      if (reduceMotion) {
+        bar.style.animation = "none";
+      } else {
+        bar.style.animation = `decision-drain ${DECISION_MS}ms linear forwards`;
+      }
+    }
+    const tick = () => {
+      const left = Math.max(0, ends - Date.now());
+      const secs = Math.ceil(left / 1000);
+      if (labelEl) labelEl.textContent = `Decide · ${secs}s`;
+      if (reduceMotion && bar) {
+        bar.style.transform = `scaleX(${left / DECISION_MS})`;
+      }
+      if (left <= 0 && state.decisionTick) {
+        clearInterval(state.decisionTick);
+        state.decisionTick = null;
+      }
+    };
+    tick();
+    state.decisionTick = setInterval(tick, 100);
     state.decisionTimer = setTimeout(() => {
       windowEl.hidden = true;
-      stage.classList.remove("live");
+      stage.classList.remove("live", "slam", "flash", "slam-breaking", "slam-rumour");
+      stage.dataset.mode = "idle";
+      if (labelEl) labelEl.textContent = "Decide";
+      document.documentElement.classList.remove("news-action", "news-action-rumour");
       measureStageHeight();
     }, DECISION_MS);
   } else {
     windowEl.hidden = true;
+    if (labelEl) labelEl.textContent = "Decide";
   }
   measureStageHeight();
 }
 
-function pulseWatchSymbols(symbols, kind) {
+function highlightNewsSymbols(symbols, kind) {
   const until = Date.now() + DECISION_MS;
-  const pulseKind = kind === "RUMOUR" ? "rumour" : "news";
+  const hitKind = kind === "RUMOUR" ? "rumour" : "news";
   for (const symbol of symbols) {
     if (!state.instruments.has(symbol)) continue;
-    state.pulseSymbols.set(symbol, { until, kind: pulseKind });
+    state.newsHighlights.set(symbol, { until, kind: hitKind });
   }
   renderWatchlist();
   setTimeout(() => {
     const now = Date.now();
-    for (const [sym, meta] of state.pulseSymbols) {
-      if (meta.until <= now) state.pulseSymbols.delete(sym);
+    for (const [sym, meta] of state.newsHighlights) {
+      if (meta.until <= now) state.newsHighlights.delete(sym);
     }
     renderWatchlist();
   }, DECISION_MS + 50);
@@ -560,11 +636,11 @@ function renderWatchlist() {
   body.innerHTML = rows.map((row) => {
     const cls = signClass(row.change_pct);
     const badge = statusBadge(row);
-    const pulse = state.pulseSymbols.get(row.symbol);
-    const pulseClass = pulse && pulse.until > now
-      ? (pulse.kind === "rumour" ? "pulse-rumour" : "pulse-news")
+    const hit = state.newsHighlights.get(row.symbol);
+    const hitClass = hit && hit.until > now
+      ? (hit.kind === "rumour" ? "rumour-hit" : "news-hit")
       : "";
-    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" class="${pulseClass}" aria-selected="${row.symbol === state.selected}">
+    return `<tr data-symbol="${row.symbol}" data-last="${row.last}" class="${hitClass}" aria-selected="${row.symbol === state.selected}">
       <td><div class="sym">${row.symbol}${badge}</div><div class="co">${escapeHtml(row.name)}</div></td>
       <td class="num price">${inr(row.last)}</td>
       <td class="num ${cls}">${pct(row.change_pct)}</td>
@@ -837,14 +913,16 @@ async function submitOrder(event) {
       toast("down", "Order rejected", order.reason || "");
     } else if (order.status === "FILLED") {
       const slip = state.lastPreviewSlippage;
-      const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
-        ? ` Slippage ${pct(slip)}.`
-        : "";
-      toast(
-        "up",
-        `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol} @ ${inr(order.avg_price)}`,
-        `Filled.${slipNote}`,
-      );
+      if (!moment) {
+        const slipNote = slip !== null && slip !== undefined && Number(slip) !== 0
+          ? ` Slippage ${pct(slip)}.`
+          : "";
+        toast(
+          "up",
+          `${order.side} ${fmtQty(order.filled_qty)} ${order.symbol} @ ${inr(order.avg_price)}`,
+          `Filled.${slipNote}`,
+        );
+      }
       state.lastPreviewSlippage = null;
     } else {
       toast("", "Order placed", `${order.type} resting at ${inr(order.limit_price || order.trigger_price)}`);
@@ -1045,32 +1123,53 @@ function updateBookCount() {
 function renderNews() {
   const box = el("newsList");
   if (!state.news.length) {
-    box.innerHTML = '<div class="empty">No news yet. Headlines appear here as they break.</div>';
+    box.innerHTML = `<div class="empty events-empty">
+      <div class="events-empty-title">Events desk is quiet</div>
+      <div>Headlines and rumours will land here — and slam onto the stage above. Tap a stock chip to jump into Trade.</div>
+    </div>`;
     return;
   }
   el("newsCount").textContent = state.unreadNews || "";
 
-  box.innerHTML = state.news.slice(0, 80).map((item, index) => `
-    <div class="news-item ${item.retracted ? "retracted" : ""} ${item.kind === "RUMOUR" ? "is-rumour" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
-      <div class="top">
-        <span class="pill ${item.kind === "RUMOUR" ? "warn" : item.kind === "RESULTS" ? "accent" : ""}">${item.kind}</span>
-        ${item.retracted ? '<span class="pill down">Retracted</span>' : ""}
-        <span class="time">${shortTime(item.published_at)}</span>
+  box.innerHTML = state.news.slice(0, 80).map((item, index) => {
+    const kind = item.retracted ? "Retracted"
+      : item.kind === "RUMOUR" ? "Rumour"
+        : item.kind === "RESULTS" ? "Results" : "Breaking";
+    const kindClass = item.retracted ? "down"
+      : item.kind === "RUMOUR" ? "warn" : "accent";
+    return `
+    <article class="news-item event-card ${item.retracted ? "retracted" : ""} ${item.kind === "RUMOUR" ? "is-rumour" : ""} ${index === 0 ? "open" : ""}" data-news="${item.id}">
+      <div class="event-rail" aria-hidden="true"></div>
+      <div class="event-main">
+        <div class="top">
+          <span class="pill ${kindClass}">${kind}</span>
+          <span class="time" title="${escapeHtml(shortTime(item.published_at))}">${relativeTime(item.published_at)}</span>
+        </div>
+        <div class="headline">${escapeHtml(item.headline)}</div>
+        <div class="body">${escapeHtml(item.body || "")}</div>
+        ${(item.symbols || []).length
+          ? `<div class="tags">${item.symbols.map((s) => `<button type="button" class="sym-chip" data-sym="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join("")}</div>`
+          : ""}
       </div>
-      <div class="headline">${escapeHtml(item.headline)}</div>
-      <div class="body">${escapeHtml(item.body || "")}</div>
-      ${(item.symbols || []).length
-        ? `<div class="tags">${item.symbols.map((s) => `<span class="pill accent" data-sym="${s}">${s}</span>`).join("")}</div>`
-        : ""}
-    </div>`).join("");
+    </article>`;
+  }).join("");
 
   box.querySelectorAll(".news-item").forEach((node) => {
-    node.addEventListener("click", () => node.classList.toggle("open"));
+    node.addEventListener("click", (event) => {
+      if (event.target.closest("[data-sym]")) return;
+      node.classList.toggle("open");
+      const id = Number(node.dataset.news);
+      const item = state.news.find((n) => n.id === id);
+      if (item) showOnStage(item, { decision: false });
+    });
   });
   box.querySelectorAll("[data-sym]").forEach((tag) => {
     tag.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (state.instruments.has(tag.dataset.sym)) select(tag.dataset.sym);
+      if (state.instruments.has(tag.dataset.sym)) {
+        // Jump into Trade/Watch for that name (mobile focuses the ticket).
+        select(tag.dataset.sym, { focus: true });
+      }
     });
   });
 }

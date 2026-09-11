@@ -25,13 +25,13 @@ fees:
   gst_pct: "18"                  # on brokerage + exchange charge
 
 margin:
-  # 20% initial margin is the 5x leverage cap in the brief.
-  initial_pct: "20"
+  # ~66.7% initial margin is a 1.5x leverage cap (was 20% / 5x).
+  initial_pct: "66.66666667"
   # A team is warned here and force-covered at maintenance_pct.
-  warning_pct: "15"
-  maintenance_pct: "12"
+  warning_pct: "50"
+  maintenance_pct: "40"
   # Forced covering stops once equity is back above this share of short value.
-  liquidate_to_pct: "20"
+  liquidate_to_pct: "66.66666667"
   borrow_fee_pct_per_day: "0.05"
   # Longs are cash-only. Turning this on is not implemented; it is here to make
   # the decision explicit rather than implicit.
