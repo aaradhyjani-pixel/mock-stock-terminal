@@ -26,29 +26,37 @@
     <span class="label hide-sm" id="dayNo"></span>
   </div>
 
-  <div class="stat hide-md">
-    <span class="k" id="indexName">Index</span>
-    <span class="v"><span id="indexValue">-</span> <span id="indexChange" class="v"></span></span>
-  </div>
-
   <div class="spacer"></div>
 
-  <div class="stat">
-    <span class="k">Account value</span>
+  <!-- Primary: account value + live rank -->
+  <div class="stat primary">
+    <span class="k">Account</span>
     <span class="v" id="hdrEquity">-</span>
   </div>
-  <div class="stat hide-sm">
-    <span class="k">Available</span>
-    <span class="v" id="hdrAvailable">-</span>
-  </div>
-  <div class="stat hide-md">
-    <span class="k">Total P&amp;L</span>
-    <span class="v" id="hdrPnl">-</span>
+  <div class="stat primary rank-stat">
+    <span class="k">Rank</span>
+    <span class="v" id="hdrRank">-</span>
   </div>
 
-  <div class="stat hide-md" style="text-align:right">
+  <!-- Secondary chips -->
+  <div class="chip-row hide-sm">
+    <div class="chip">
+      <span class="k">Avail</span>
+      <span class="v" id="hdrAvailable">-</span>
+    </div>
+    <div class="chip">
+      <span class="k">P&amp;L</span>
+      <span class="v" id="hdrPnl">-</span>
+    </div>
+    <div class="chip hide-md">
+      <span class="k" id="indexName">Index</span>
+      <span class="v"><span id="indexValue">-</span> <span id="indexChange"></span></span>
+    </div>
+  </div>
+
+  <div class="stat team-stat hide-md" style="text-align:right">
     <span class="k" id="memberName"></span>
-    <span class="v" style="font-family:var(--sans);font-size:12px" id="teamName"></span>
+    <span class="v team-name" id="teamName"></span>
   </div>
 
   <button class="iconbtn" id="themeToggle" title="Switch between light and dark">Theme</button>
@@ -58,6 +66,26 @@
 <div class="offline" id="offline" hidden>Reconnecting to the exchange. Trading is paused until the connection is back.</div>
 <div class="banner" id="banner" data-severity="info" hidden></div>
 
+<!-- Persistent news / rumour stage (above the three columns) -->
+<section class="news-stage" id="newsStage" aria-live="polite">
+  <div class="stage-inner">
+    <div class="stage-kind">
+      <span class="pill" id="stageKindPill">Waiting</span>
+    </div>
+    <div class="stage-body">
+      <div class="stage-headline" id="stageHeadline">Headlines will appear here as they break.</div>
+      <div class="stage-meta">
+        <span class="stage-time" id="stageTime"></span>
+        <span class="stage-symbols" id="stageSymbols"></span>
+      </div>
+    </div>
+    <div class="stage-window" id="stageWindow" hidden>
+      <span class="stage-window-label">Decide</span>
+      <div class="stage-window-meter"><span id="stageWindowBar"></span></div>
+    </div>
+  </div>
+</section>
+
 <main class="app" id="app">
 
   <!-- ------------------------------------------------------------ watchlist -->
@@ -65,7 +93,7 @@
     <div class="stack">
       <div class="panel" style="flex:1">
         <div class="panel-head">
-          <h2>Market watch</h2>
+          <h2>Watch</h2>
           <div class="spacer"></div>
           <input type="text" id="search" placeholder="Filter  /" style="width:110px;padding:3px 7px;font-size:11px">
         </div>
@@ -88,7 +116,7 @@
   <!-- --------------------------------------------------------- chart+ticket -->
   <section class="col centre" data-col="centre">
     <div class="stack">
-      <div class="panel" style="flex:1;min-height:260px">
+      <div class="panel" style="flex:1;min-height:160px">
         <div class="panel-head">
           <h2 id="ticketSymbol">-</h2>
           <span class="dim" id="ticketName" style="font-size:11px"></span>
@@ -115,9 +143,9 @@
         </div>
       </div>
 
-      <div class="panel" style="flex:0 0 auto">
+      <div class="panel ticket-panel" style="flex:0 0 auto">
         <div class="panel-head">
-          <h2>Order ticket</h2>
+          <h2>Order</h2>
           <div class="spacer"></div>
           <span id="ticketPosition" style="font-size:11px"></span>
         </div>
@@ -129,14 +157,13 @@
 
           <div class="segmented sides">
             <button type="button" data-side="BUY" aria-pressed="true">Buy</button>
-            <button type="button" data-side="SELL" aria-pressed="false">Sell / Short</button>
+            <button type="button" data-side="SELL" aria-pressed="false" id="sellSideBtn">Sell</button>
           </div>
 
-          <div class="segmented">
+          <!-- Default: Market | Limit only -->
+          <div class="segmented" id="basicTypes">
             <button type="button" data-otype="MARKET" aria-pressed="true">Market</button>
             <button type="button" data-otype="LIMIT" aria-pressed="false">Limit</button>
-            <button type="button" data-otype="SL_M" aria-pressed="false">Stop</button>
-            <button type="button" data-otype="SL_L" aria-pressed="false">Stop limit</button>
           </div>
 
           <div class="row">
@@ -168,6 +195,19 @@
 
           <button type="submit" class="btn block buy" id="submitOrder">Buy</button>
           <div class="dim" id="ticketNote" style="font-size:11px;text-align:center;min-height:14px"></div>
+          <div class="dim" id="sideIntent" style="font-size:11px;text-align:center;min-height:14px"></div>
+
+          <!-- Progressive disclosure: stop / stop-limit -->
+          <details class="advanced-orders" id="advancedOrders">
+            <summary>Protect this trade</summary>
+            <div class="advanced-body">
+              <p class="dim" style="font-size:11px;margin:0 0 6px">Stop orders rest until the trigger prints. Use them to cap downside after you are in.</p>
+              <div class="segmented" id="advancedTypes">
+                <button type="button" data-otype="SL_M" aria-pressed="false">Stop</button>
+                <button type="button" data-otype="SL_L" aria-pressed="false">Stop limit</button>
+              </div>
+            </div>
+          </details>
         </form>
       </div>
     </div>
@@ -176,38 +216,48 @@
   <!-- ---------------------------------------------------------------- right -->
   <section class="col right" data-col="right">
     <div class="tabs" id="rightTabs">
-      <button class="tab" data-tab="positions" aria-selected="true">
-        Positions <span class="badge" id="positionsCount"></span>
-      </button>
-      <button class="tab" data-tab="orders" aria-selected="false">
-        Orders <span class="badge" id="ordersCount"></span>
+      <button class="tab" data-tab="book" aria-selected="true">
+        Book <span class="badge" id="bookCount"></span>
       </button>
       <button class="tab" data-tab="funds" aria-selected="false">Funds</button>
+      <button class="tab" data-tab="board" aria-selected="false">Board</button>
       <button class="tab" data-tab="news" aria-selected="false">
         News <span class="badge" id="newsCount"></span>
       </button>
-      <button class="tab" data-tab="board" aria-selected="false">Board</button>
     </div>
 
-    <div class="panel-body" data-pane="positions">
-      <table class="grid">
-        <thead>
-          <tr>
-            <th>Stock</th><th class="num">Qty</th><th class="num">Avg</th>
-            <th class="num">Last</th><th class="num">P&amp;L</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="positionsBody"></tbody>
-      </table>
-    </div>
+    <!-- Primary Book: positions + open orders -->
+    <div class="panel-body book-pane" data-pane="book" id="bookPane">
+      <div id="bookMargin" class="book-margin" hidden></div>
 
-    <div class="panel-body" data-pane="orders" hidden>
-      <table class="grid">
-        <thead>
-          <tr><th>Stock</th><th class="num">Qty</th><th class="num">Price</th><th>Status</th><th></th></tr>
-        </thead>
-        <tbody id="ordersBody"></tbody>
-      </table>
+      <div class="book-section">
+        <div class="book-section-head">
+          <h3>Positions</h3>
+          <span class="badge" id="positionsCount"></span>
+        </div>
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>Stock</th><th class="num">Qty</th><th class="num">Avg</th>
+              <th class="num">Last</th><th class="num">P&amp;L</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="positionsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="book-section">
+        <div class="book-section-head">
+          <h3>Open orders</h3>
+          <span class="badge" id="ordersCount"></span>
+        </div>
+        <table class="grid">
+          <thead>
+            <tr><th>Stock</th><th class="num">Qty</th><th class="num">Price</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="ordersBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="panel-body pad" data-pane="funds" hidden id="fundsBox"></div>
@@ -219,12 +269,36 @@
 </main>
 
 <nav class="mobile-nav">
-  <button data-pane="left" aria-pressed="true"><span class="dot"></span>Watch</button>
-  <button data-pane="centre" aria-pressed="false"><span class="dot"></span>Trade</button>
-  <button data-pane="right" data-tab="positions" aria-pressed="false"><span class="dot"></span>Book</button>
-  <button data-pane="right" data-tab="news" aria-pressed="false"><span class="dot"></span>News</button>
-  <button data-pane="right" data-tab="board" aria-pressed="false"><span class="dot"></span>Board</button>
+  <button data-mobile="left" aria-pressed="true"><span class="dot"></span>Watch</button>
+  <button data-mobile="centre" aria-pressed="false"><span class="dot"></span>Trade</button>
+  <button data-mobile="right" data-tab="book" aria-pressed="false"><span class="dot"></span>Book</button>
+  <button data-mobile="more" aria-pressed="false"><span class="dot"></span>More</button>
 </nav>
+
+<!-- More sheet: Funds / Board / News archive -->
+<div class="more-sheet" id="moreSheet" hidden>
+  <div class="more-sheet-card">
+    <div class="more-sheet-head">
+      <h2>More</h2>
+      <button type="button" class="iconbtn" id="moreClose" title="Close">Close</button>
+    </div>
+    <button type="button" class="more-item" data-more-tab="funds">Funds</button>
+    <button type="button" class="more-item" data-more-tab="board">Board</button>
+    <button type="button" class="more-item" data-more-tab="news">News archive</button>
+  </div>
+</div>
+
+<!-- First-run coach: non-blocking floating card -->
+<aside class="coach" id="coach" hidden>
+  <div class="coach-card">
+    <div class="coach-progress"><span id="coachStepLabel">1 / 3</span></div>
+    <p class="coach-text" id="coachText">Pick a stock from the watchlist.</p>
+    <div class="coach-actions">
+      <button type="button" class="btn ghost sm" id="coachSkip">Skip</button>
+      <button type="button" class="btn primary sm" id="coachNext">Next</button>
+    </div>
+  </div>
+</aside>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 

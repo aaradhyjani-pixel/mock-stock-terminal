@@ -89,6 +89,16 @@ setInterval(() => {
   el("countdown").textContent = endsAt ? duration((endsAt - Date.now()) / 1000) : "--:--";
 }, 250);
 
+
+// If they are already signed in (common after a phone back-gesture to this
+// page), bounce them back into the terminal without adding another history step.
+(async () => {
+  if (api.token || await api.refresh()) {
+    window.location.replace("/");
+    return;
+  }
+})();
+
 pollMarket();
 setInterval(pollMarket, 10000);
 
@@ -106,7 +116,8 @@ el("loginForm").addEventListener("submit", async (event) => {
       retry: false,
     });
     api.setToken(data.access_token);
-    window.location.href = "/";
+    // replace so phone back-swipe does not return to /login
+    window.location.replace("/");
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;

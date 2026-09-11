@@ -40,7 +40,7 @@ async function boot() {
   try {
     state.me = await api.get("/api/auth/ops/me");
   } catch {
-    window.location.href = "/console/login";
+    window.location.replace("/console/login");
     return;
   }
   el("operatorName").textContent = state.me.operator.name;
@@ -939,7 +939,7 @@ function wireStream() {
   });
   stream.on("unauthorised", async () => {
     if (await api.refresh()) stream.connect(api.token);
-    else window.location.href = "/console/login";
+    else window.location.replace("/console/login");
   });
   stream.on("market_state", (data) => { state.market = { ...state.market, ...data }; renderMarket(); });
   stream.on("quotes", (data) => {
@@ -978,7 +978,7 @@ function wireChrome() {
     stream.close();
     try { await api.post("/api/auth/ops/logout"); } catch { /* ignore */ }
     api.clearToken();
-    window.location.href = "/console/login";
+    window.location.replace("/console/login");
   });
   el("refreshBtn").addEventListener("click", refreshAll);
 }
