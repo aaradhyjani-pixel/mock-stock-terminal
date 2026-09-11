@@ -59,7 +59,7 @@ async function boot() {
   try {
     state.me = await api.get("/api/auth/me");
   } catch {
-    window.location.href = "/login";
+    window.location.replace("/login");
     return;
   }
 
@@ -105,9 +105,26 @@ async function boot() {
   setInterval(tickClock, 250);
   setInterval(() => { if (state.connected) loadLeaderboard(); }, 20000);
 
+
+  // Phones treat a swipe-back as history.back(). Keep them on the terminal
+  // while signed in instead of dumping them on /login.
+  guardParticipantHistory();
+
   maybeShowCoach();
   measureStageHeight();
   window.addEventListener("resize", measureStageHeight);
+}
+
+
+function guardParticipantHistory() {
+  try {
+    history.replaceState({ mst: "terminal" }, "", "/");
+  } catch { /* ignore */ }
+  window.addEventListener("popstate", () => {
+    try {
+      history.pushState({ mst: "terminal" }, "", "/");
+    } catch { /* ignore */ }
+  });
 }
 
 function measureStageHeight() {
@@ -136,7 +153,7 @@ function wireChrome() {
     stream.close();
     try { await api.post("/api/auth/logout"); } catch { /* signing out anyway */ }
     api.clearToken();
-    window.location.href = "/login";
+    window.location.replace("/login");
   });
 
   el("search").addEventListener("input", (event) => {
@@ -251,7 +268,7 @@ function wireStream() {
 
   stream.on("unauthorised", async () => {
     if (await api.refresh()) stream.connect(api.token);
-    else window.location.href = "/login";
+    else window.location.replace("/login");
   });
 
   stream.on("snapshot", (data) => {

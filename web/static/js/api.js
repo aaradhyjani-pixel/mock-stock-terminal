@@ -82,7 +82,7 @@ export class Api {
       if (refreshed) return this.request(path, { method, body, retry: false, raw });
       this.clearToken();
       if (this.onUnauthorised) this.onUnauthorised();
-      else window.location.href = this.loginPath;
+      else window.location.replace(this.loginPath);
       throw new ApiError("Your session expired. Sign in again.", 401, null);
     }
 
