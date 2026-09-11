@@ -14,7 +14,7 @@
 
 import { api } from "./api.js";
 import { CandleChart, toCandles } from "./chart.js";
-import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, shortTime, signClass } from "./format.js";
+import { STATE_TEXT, duration, escapeHtml, inr, pct, qty as fmtQty, relativeTime, shortTime, signClass } from "./format.js";
 import { Stream } from "./stream.js";
 
 const el = (id) => document.getElementById(id);
@@ -48,6 +48,7 @@ const state = {
   newsHighlights: new Map(),   // symbol -> { until, kind }
   decisionTimer: null,
   decisionTick: null,
+  slamTimer: null,
 };
 
 const stream = new Stream("/ws");
@@ -468,14 +469,24 @@ function showOnStage(item, { decision = false } = {}) {
   if (!stage || !item) return;
 
   const isRumour = item.kind === "RUMOUR";
+  const mode = item.retracted ? "retracted" : isRumour ? "rumour" : "breaking";
   stage.dataset.newsId = item.id != null ? String(item.id) : "";
-  stage.dataset.mode = item.retracted ? "retracted" : isRumour ? "rumour" : "breaking";
-  stage.classList.toggle("rumour", isRumour);
+  stage.dataset.mode = mode;
+  stage.classList.toggle("rumour", isRumour && !item.retracted);
   stage.classList.add("live");
-  // Replay slam animation
-  stage.classList.remove("slam");
+
+  // Replay slam / flash with distinct timing for BREAKING vs RUMOUR.
+  stage.classList.remove("slam", "flash", "slam-breaking", "slam-rumour");
   void stage.offsetWidth;
-  stage.classList.add("slam");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduceMotion) {
+    const slamKind = isRumour ? "slam-rumour" : "slam-breaking";
+    stage.classList.add("slam", "flash", slamKind);
+    clearTimeout(state.slamTimer);
+    state.slamTimer = setTimeout(() => {
+      stage.classList.remove("slam", "flash", "slam-breaking", "slam-rumour");
+    }, 650);
+  }
 
   const pill = el("stageKindPill");
   if (item.retracted) {
@@ -491,16 +502,18 @@ function showOnStage(item, { decision = false } = {}) {
 
   const kicker = el("stageKicker");
   if (kicker) {
-    kicker.textContent = isRumour
-      ? "Unverified — trade carefully"
-      : "Live from the events desk";
+    kicker.textContent = item.retracted
+      ? "Retracted — do not trade on this"
+      : isRumour
+        ? "Unverified — trade carefully"
+        : "Live from the events desk";
   }
 
   const headline = el("stageHeadline");
   headline.textContent = item.headline || "";
   headline.classList.toggle("retracted", Boolean(item.retracted));
 
-  el("stageTime").textContent = item.published_at ? shortTime(item.published_at) : "";
+  el("stageTime").textContent = item.published_at ? relativeTime(item.published_at) : "";
 
   const symBox = el("stageSymbols");
   const symbols = item.symbols || [];
@@ -509,43 +522,70 @@ function showOnStage(item, { decision = false } = {}) {
     .join("");
   symBox.querySelectorAll("[data-stage-sym]").forEach((tag) => {
     tag.addEventListener("click", () => {
-      if (state.instruments.has(tag.dataset.stageSym)) select(tag.dataset.stageSym);
+      if (state.instruments.has(tag.dataset.stageSym)) {
+        select(tag.dataset.stageSym, { focus: true });
+      }
     });
   });
 
-  // Jump participants into the story stock on a fresh break.
-  if (decision && !item.retracted && symbols.length && state.instruments.has(symbols[0])) {
-    select(symbols[0], { focus: false });
+  // Auto-select first related symbol when nothing is selected, or on a live break.
+  const first = symbols.find((s) => state.instruments.has(s));
+  if (first && !item.retracted && (decision || !state.selected)) {
+    select(first, { focus: Boolean(decision) });
   }
 
   const windowEl = el("stageWindow");
   const bar = el("stageWindowBar");
-  const secsEl = el("stageWindowSecs");
+  const labelEl = el("stageWindowLabel");
   clearTimeout(state.decisionTimer);
-  if (state.decisionTick) clearInterval(state.decisionTick);
+  if (state.decisionTick) {
+    clearInterval(state.decisionTick);
+    state.decisionTick = null;
+  }
+  document.documentElement.classList.remove("news-action", "news-action-rumour");
+
   if (decision && !item.retracted) {
     windowEl.hidden = false;
+    windowEl.dataset.kind = isRumour ? "rumour" : "breaking";
+    document.documentElement.classList.add("news-action");
+    if (isRumour) document.documentElement.classList.add("news-action-rumour");
+
     const ends = Date.now() + DECISION_MS;
-    bar.style.animation = "none";
-    void bar.offsetWidth;
-    bar.style.animation = "";
+    if (bar) {
+      bar.style.animation = "none";
+      bar.style.transform = "";
+      void bar.offsetWidth;
+      if (reduceMotion) {
+        bar.style.animation = "none";
+      } else {
+        bar.style.animation = `decision-drain ${DECISION_MS}ms linear forwards`;
+      }
+    }
     const tick = () => {
       const left = Math.max(0, ends - Date.now());
-      if (secsEl) secsEl.textContent = `${Math.ceil(left / 1000)}s`;
-      if (left <= 0 && state.decisionTick) clearInterval(state.decisionTick);
+      const secs = Math.ceil(left / 1000);
+      if (labelEl) labelEl.textContent = `Decide · ${secs}s`;
+      if (reduceMotion && bar) {
+        bar.style.transform = `scaleX(${left / DECISION_MS})`;
+      }
+      if (left <= 0 && state.decisionTick) {
+        clearInterval(state.decisionTick);
+        state.decisionTick = null;
+      }
     };
     tick();
-    state.decisionTick = setInterval(tick, 200);
+    state.decisionTick = setInterval(tick, 100);
     state.decisionTimer = setTimeout(() => {
       windowEl.hidden = true;
-      stage.classList.remove("live", "slam");
+      stage.classList.remove("live", "slam", "flash", "slam-breaking", "slam-rumour");
       stage.dataset.mode = "idle";
-      if (secsEl) secsEl.textContent = "";
+      if (labelEl) labelEl.textContent = "Decide";
+      document.documentElement.classList.remove("news-action", "news-action-rumour");
       measureStageHeight();
     }, DECISION_MS);
   } else {
     windowEl.hidden = true;
-    if (secsEl) secsEl.textContent = "";
+    if (labelEl) labelEl.textContent = "Decide";
   }
   measureStageHeight();
 }
@@ -1085,7 +1125,7 @@ function renderNews() {
   if (!state.news.length) {
     box.innerHTML = `<div class="empty events-empty">
       <div class="events-empty-title">Events desk is quiet</div>
-      <div>When headlines and rumours break, they land here — and on the stage above. Tap a related stock chip to jump straight into the story.</div>
+      <div>Headlines and rumours will land here — and slam onto the stage above. Tap a stock chip to jump into Trade.</div>
     </div>`;
     return;
   }
@@ -1103,12 +1143,12 @@ function renderNews() {
       <div class="event-main">
         <div class="top">
           <span class="pill ${kindClass}">${kind}</span>
-          <span class="time">${shortTime(item.published_at)}</span>
+          <span class="time" title="${escapeHtml(shortTime(item.published_at))}">${relativeTime(item.published_at)}</span>
         </div>
         <div class="headline">${escapeHtml(item.headline)}</div>
         <div class="body">${escapeHtml(item.body || "")}</div>
         ${(item.symbols || []).length
-          ? `<div class="tags">${item.symbols.map((s) => `<button type="button" class="sym-chip" data-sym="${s}">${s}</button>`).join("")}</div>`
+          ? `<div class="tags">${item.symbols.map((s) => `<button type="button" class="sym-chip" data-sym="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join("")}</div>`
           : ""}
       </div>
     </article>`;
@@ -1126,7 +1166,10 @@ function renderNews() {
   box.querySelectorAll("[data-sym]").forEach((tag) => {
     tag.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (state.instruments.has(tag.dataset.sym)) select(tag.dataset.sym);
+      if (state.instruments.has(tag.dataset.sym)) {
+        // Jump into Trade/Watch for that name (mobile focuses the ticket).
+        select(tag.dataset.sym, { focus: true });
+      }
     });
   });
 }
@@ -1356,9 +1399,6 @@ function tickClock() {
   countdown.textContent = duration(remaining);
   countdown.className = `countdown ${remaining < 60 && market.state === "OPEN" ? "down" : ""}`;
 }
-
-/* ------------------------------------------------------------- Pulse */
-
 
 /* ------------------------------------------------------------------- toasts */
 
