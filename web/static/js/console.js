@@ -607,6 +607,49 @@ function wireNewsDesk() {
       toast(error.message, "down");
     }
   });
+
+  checkAiNewsAvailability();
+  el("aiDraftBtn").addEventListener("click", async () => {
+    const prompt = el("aiPrompt").value.trim();
+    if (!prompt) {
+      el("aiPrompt").focus();
+      return;
+    }
+    const button = el("aiDraftBtn");
+    const symbols = el("newsSymbols").value.split(",").map((s) => s.trim()).filter(Boolean);
+    button.disabled = true;
+    button.textContent = "Drafting...";
+    try {
+      // Drafts only. Nothing here publishes - the operator reviews and edits
+      // the headline and body below before pressing Publish, same as if they
+      // had typed it themselves.
+      const draft = await api.post("/api/admin/news/draft", { prompt, symbols });
+      el("newsHeadline").value = draft.headline;
+      el("newsBody").value = draft.body;
+      toast("Draft ready. Review it before publishing.");
+    } catch (error) {
+      toast(error.message, "down");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Draft with AI";
+    }
+  });
+}
+
+async function checkAiNewsAvailability() {
+  try {
+    const status = await api.get("/api/admin/news/ai-status");
+    const row = el("aiDraftRow");
+    const note = el("aiDraftNote");
+    if (status.available) {
+      note.textContent = `Drafts with ${status.model}. Always review before publishing.`;
+    } else {
+      row.querySelectorAll("input, button").forEach((node) => { node.disabled = true; });
+      note.textContent = "AI drafting is not set up on this deployment (no API key configured).";
+    }
+  } catch {
+    /* Not fatal - the button just tries and reports the real error on click. */
+  }
 }
 
 function renderNewsList() {

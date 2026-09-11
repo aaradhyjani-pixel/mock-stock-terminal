@@ -211,6 +211,12 @@
   <section class="panel">
     <div class="panel-head"><h2>News desk</h2></div>
     <div class="panel-body pad">
+      <div id="aiDraftRow" class="row" style="margin-bottom:2px">
+        <input type="text" id="aiPrompt" placeholder="Describe the news in a few words, e.g. &quot;Infosys misses earnings, cuts guidance&quot;">
+        <button type="button" class="btn sm" id="aiDraftBtn" style="flex:0 0 auto">Draft with AI</button>
+      </div>
+      <div id="aiDraftNote" class="dim" style="font-size:11px;margin:-2px 0 4px"></div>
+
       <form id="newsForm" style="display:flex;flex-direction:column;gap:7px">
         <input type="text" id="newsHeadline" placeholder="Headline" maxlength="240" required>
         <textarea id="newsBody" rows="3" placeholder="Two to four sentences of detail."></textarea>

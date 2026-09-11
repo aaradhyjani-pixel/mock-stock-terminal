@@ -22,11 +22,13 @@ import io
 from datetime import timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import get_rules, reload_rules
+from ..ai import AiNewsError, AiNewsUnavailable, draft_news
+from ..config import get_rules, get_settings, reload_rules
 from ..db import get_db, locked_team, session_scope
 from ..engine.market import get_engine
 from ..engine.matching import load_marks, load_positions, post_ledger, valuate_team
@@ -63,6 +65,7 @@ from ..models import (
 from ..money import ZERO, fmt_inr, money, paise, round_to_tick
 from ..schemas import (
     AdjustmentRequest,
+    AiNewsDraftRequest,
     BandRequest,
     BroadcastRequest,
     DividendRequest,
@@ -84,6 +87,7 @@ from ..schemas import (
 )
 from ..security import (
     OperatorIdentity,
+    SlidingWindow,
     generate_code,
     generate_password,
     hash_password,
@@ -529,6 +533,40 @@ async def list_price_actions(
 
 
 # --------------------------------------------------------------------- news
+
+
+# A per-operator cap, not because the SDK is expensive, but because a stuck
+# retry loop should not run up an unbounded bill unattended.
+_ai_news_limiter = SlidingWindow(limit=20, window_seconds=600.0)
+
+
+@router.get("/news/ai-status")
+async def ai_news_status(identity: OperatorIdentity = Depends(NEWS_OPS)):
+    """So the console can grey the button out with a real reason instead of
+    letting the operator discover the missing key mid-event."""
+    settings = get_settings()
+    return {"available": settings.ai_news_available, "model": settings.ai_news_model}
+
+
+@router.post("/news/draft")
+async def draft_news_item(
+    payload: AiNewsDraftRequest, identity: OperatorIdentity = Depends(NEWS_OPS)
+):
+    """Draft a headline and body from a prompt. Never publishes anything."""
+    if not _ai_news_limiter.check(f"news-draft:{identity.operator.id}"):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many AI drafts in a short time. Wait a few minutes, or write this one by hand.",
+        )
+    try:
+        draft = await run_in_threadpool(draft_news, payload.prompt, symbols=payload.symbols)
+    except AiNewsUnavailable as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except AiNewsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    async with session_scope() as session:
+        audit(session, identity, "news.ai_draft", payload.prompt[:80])
+    return {"headline": draft.headline, "body": draft.body}
 
 
 @router.post("/news")

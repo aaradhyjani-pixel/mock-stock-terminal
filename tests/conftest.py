@@ -80,6 +80,8 @@ def reset_rate_limiters():
         limiter._hits.clear()
     # Rebuilt on next use, so a test that changes the rule gets the new limit.
     trading._order_limiter = None
+    from app.routers import admin as admin_router
+    admin_router._ai_news_limiter._hits.clear()
     yield
 
 

@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     #   EXCHANGE_CORS_ORIGINS='["https://terminal.vercel.app"]'
     cors_origins: list[str] = Field(default_factory=list)
 
+    # For the news desk's "Draft with AI" button. Prefers a name scoped to this
+    # app; falls back to the plain ANTHROPIC_API_KEY that Claude Code itself
+    # reads, so setting the key once covers both. Never required: the button
+    # simply explains itself as unavailable when this is unset.
+    anthropic_api_key: str | None = Field(default=None)
+    ai_news_model: str = "claude-sonnet-5"
+
     # Turning this off stops the tick loop from starting, which is what the test
     # suite wants: tests drive the engine one tick at a time, deterministically.
     run_engine: bool = True
@@ -109,6 +116,15 @@ class Settings(BaseSettings):
     @property
     def using_default_secret(self) -> bool:
         return self.secret_key == DEFAULT_SECRET_KEY
+
+    @property
+    def ai_news_available(self) -> bool:
+        return bool(self.resolved_anthropic_key)
+
+    @property
+    def resolved_anthropic_key(self) -> str | None:
+        import os
+        return self.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
 
     @property
     def split_frontend(self) -> bool:

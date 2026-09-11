@@ -157,6 +157,16 @@ class NewsRequest(BaseModel):
         return [s.strip().upper() for s in v if s.strip()]
 
 
+class AiNewsDraftRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=500)
+    symbols: list[str] = Field(default_factory=list)
+
+    @field_validator("symbols")
+    @classmethod
+    def _upper_all(cls, v: list[str]) -> list[str]:
+        return [s.strip().upper() for s in v if s.strip()]
+
+
 class BroadcastRequest(BaseModel):
     message: str = Field(min_length=1, max_length=300)
     severity: str = "info"
