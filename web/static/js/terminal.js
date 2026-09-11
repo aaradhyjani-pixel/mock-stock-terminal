@@ -595,6 +595,11 @@ async function select(symbol, { focus = true } = {}) {
   state.selected = symbol;
   renderWatchlist();
   renderTicketQuote();
+  // The quantity field starts pre-filled at 1, so the cost preview has
+  // something to price the moment a stock is picked. Without this, the
+  // ticket sits on "Enter a quantity to see the cost" beside a field that
+  // already has a quantity in it, which reads as broken rather than idle.
+  schedulePreview();
   await loadCandles();
   // On a phone, tapping a stock should take you to it. Selecting one during
   // start-up should not: landing on the ticket for a stock nobody chose is a

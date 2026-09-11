@@ -229,6 +229,7 @@ a:hover { text-decoration: underline; }
   font-family: inherit;
 }
 .iconbtn:hover { color: var(--text); border-color: var(--accent-dim); }
+.iconbtn .btn-glyph { display: none; font-size: 14px; line-height: 1; }
 
 /* ------------------------------------------------------------------ banner */
 
@@ -760,6 +761,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .toasts { bottom: 60px; }
 }
 
+
+
 /* ---------------------------------------------------------------- console */
 
 .console-grid {
@@ -1213,4 +1216,39 @@ body.has-offline .app {
   bottom: 0;
   z-index: 2;
   box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* This block deliberately sits at the very end of the file. The 'UX
+ * redesign' section above declares `.topbar { gap: 12px }` with no media
+ * guard, so it wins the cascade over any earlier, narrower media query at
+ * every width - CSS breaks ties on source order once specificity is equal,
+ * and wrapping a rule in @media does not add specificity. Appending here
+ * is what actually wins on a phone; moving this back up the file will
+ * silently reopen the topbar overflow this fixes. */
+/* Phones. The topbar was overflowing here: seven flex children at their
+ * desktop gap and padding need about 510px, and a phone offers 360-420px.
+ * Two things earn back the width without losing anything a participant
+ * actually reads at a glance - the market state is still colour-coded even
+ * as a dot, and Theme/Sign out are still one tap, just an icon instead of a
+ * word, which is the same trade every native app makes on a small screen. */
+@media (max-width: 430px) {
+  .topbar { gap: 5px; padding: 0 8px; }
+  .clock { gap: 6px; padding: 3px 7px; }
+  .brand .mark { width: 20px; height: 20px; font-size: 11px; }
+  .stat.primary .k { font-size: 8.5px; }
+  .stat.primary .v { font-size: 12px; }
+  .stat.rank-stat { min-width: 0; }
+  .iconbtn { min-width: 28px; padding: 0 6px; }
+  .iconbtn .btn-label { display: none; }
+  .iconbtn .btn-glyph { display: block; }
+  .stat.rank-stat .k { display: none; }
+  .clock { gap: 4px; padding: 2px 6px; }
+  .clock .countdown { font-size: 12.5px; }
+}
+
+/* Genuinely tiny phones (iPhone SE 1st gen and similar, 320px). Rare in
+ * 2026 but cheap to cover: the rupee value is the one thing here that is
+ * still wide at 12px, so it drops one more size rather than clip. */
+@media (max-width: 340px) {
+  .stat.primary .v { font-size: 11px; }
 }
