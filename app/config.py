@@ -222,6 +222,17 @@ class MarketRules(BaseModel):
     default_slippage_tolerance_pct: Decimal = Decimal("1.0")
 
 
+class ResearchRules(BaseModel):
+    """The paid research desk. Off by default: it needs an AI key to do
+    anything, and a competition runs identically without it."""
+
+    enabled: bool = True
+    cost: Decimal = Decimal("1500")
+    # Stops a team buying the same stock's report over and over for flavour
+    # text; the content would barely change and it would just burn budget.
+    cooldown_seconds_per_symbol: int = 600
+
+
 class Rules(BaseModel):
     """The whole rulebook, as loaded from ``config/rules.yaml``."""
 
@@ -232,6 +243,7 @@ class Rules(BaseModel):
     margin: MarginRules = Field(default_factory=MarginRules)
     session: SessionRules = Field(default_factory=SessionRules)
     market: MarketRules = Field(default_factory=MarketRules)
+    research: ResearchRules = Field(default_factory=ResearchRules)
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Rules":

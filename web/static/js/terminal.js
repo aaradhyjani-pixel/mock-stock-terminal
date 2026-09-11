@@ -69,6 +69,7 @@ async function boot() {
   wireChrome();
   wireTicket();
   wireTabs();
+  wireResearch();
   wireMobileNav();
   wireMoreSheet();
   wireCoach();
@@ -606,6 +607,126 @@ async function select(symbol, { focus = true } = {}) {
   // confusing first screen. Start on the market list.
   if (focus && window.innerWidth <= 780) showPane("centre");
   advanceCoachIf(0);
+}
+
+/* -------------------------------------------------------------- research desk
+ *
+ * A paid, optional, purely textural feature: spend real cash on an invented
+ * boutique house's opinion of the selected stock. It never changes what the
+ * stock actually does - the model writing it only ever sees the same public
+ * price and change already on the watchlist - so buying one is a strategic
+ * choice about where to spend, never an edge over a team that skips it.
+ */
+
+const research = { status: null, cache: new Map() };
+
+function wireResearch() {
+  el("researchBtn").addEventListener("click", openResearchModal);
+  api.get("/api/research/status").then((s) => { research.status = s; }).catch(() => {});
+}
+
+async function openResearchModal() {
+  if (!state.selected) return;
+  const symbol = state.selected;
+
+  if (research.cache.has(symbol)) {
+    renderResearchModal(symbol, research.cache.get(symbol));
+    return;
+  }
+
+  renderResearchModal(symbol, null, { loading: true });
+  try {
+    const existing = await api.get(`/api/research?symbol=${symbol}`);
+    if (existing.reports.length) {
+      research.cache.set(symbol, existing.reports[0]);
+      renderResearchModal(symbol, existing.reports[0]);
+      return;
+    }
+  } catch { /* fall through to the buy prompt */ }
+  renderResearchModal(symbol, null);
+}
+
+function renderResearchModal(symbol, report, { loading = false } = {}) {
+  closeModal();
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.id = "researchModal";
+
+  const cost = research.status?.cost;
+  const available = research.status?.available;
+
+  let content;
+  if (loading) {
+    content = `<div class="empty">Checking for an existing report...</div>`;
+  } else if (report) {
+    content = renderReportCard(report);
+  } else if (available === false) {
+    content = `<div class="empty">The research desk is not switched on for this event.</div>`;
+  } else {
+    content = `
+      <p class="muted" style="margin:0">
+        A fictional research boutique will give you a rating and a target price
+        for <b>${symbol}</b>, based on today's price action. It is opinion, not
+        insider information - the analyst sees only the same numbers you do.
+      </p>
+      <div class="preview">
+        <div class="line"><span class="k">Cost</span><span class="v">${cost ? inr(cost) : "..."}</span></div>
+      </div>
+      <button class="btn primary block" id="buyResearchBtn">Buy report</button>
+      <div class="dim" id="researchError" style="font-size:11px;min-height:14px"></div>
+    `;
+  }
+
+  backdrop.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <header><h2>${symbol} research</h2><div style="flex:1"></div>
+        <button class="iconbtn" data-close>Close</button></header>
+      <div class="content">${content}</div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop || event.target.hasAttribute("data-close")) closeModal();
+  });
+
+  document.getElementById("buyResearchBtn")?.addEventListener("click", async (event) => {
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = "Buying...";
+    try {
+      const bought = await api.post("/api/research", { symbol });
+      research.cache.set(symbol, bought);
+      renderResearchModal(symbol, bought);
+      await loadPortfolio();
+      toast("", "Report bought", `${bought.house_name} rates ${symbol} ${bought.rating}`);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Buy report";
+      const errorBox = document.getElementById("researchError");
+      if (errorBox) errorBox.textContent = error.message;
+    }
+  });
+}
+
+function renderReportCard(report) {
+  const ratingClass = { BUY: "up", ACCUMULATE: "up", SELL: "down", REDUCE: "down", HOLD: "" }[report.rating] || "";
+  return `
+    <div class="report-card">
+      <div class="report-house">${escapeHtml(report.house_name)}</div>
+      <div class="report-top">
+        <span class="pill ${ratingClass}">${report.rating}</span>
+        ${report.target_price ? `<span class="report-target">Target ${inr(report.target_price)}</span>` : ""}
+      </div>
+      <div class="report-headline">${escapeHtml(report.headline)}</div>
+      <p class="report-body">${escapeHtml(report.body)}</p>
+      <div class="dim" style="font-size:10.5px">
+        Bought for ${inr(report.cost)} &middot; ${shortTime(report.created_at)}
+      </div>
+    </div>
+  `;
+}
+
+function closeModal() {
+  document.getElementById("researchModal")?.remove();
 }
 
 /* ------------------------------------------------------------------ ticket */

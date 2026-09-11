@@ -167,6 +167,7 @@ class LedgerKind(str, enum.Enum):
     DIVIDEND = "DIVIDEND"
     ADJUSTMENT = "ADJUSTMENT"
     BONUS = "BONUS"
+    RESEARCH = "RESEARCH"
 
 
 class NewsKind(str, enum.Enum):
@@ -568,6 +569,32 @@ class Adjustment(Base):
     ledger_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ResearchReport(Base):
+    """A paid, AI-drafted research note a team bought for one stock.
+
+    The house name is invented per report - never a real firm - and the
+    content is opinion, sentiment and colour, never a leak of scripted future
+    events: the model that writes it is only ever given the instrument's
+    public, current-moment state, so there is nothing scenario-specific for
+    it to reveal even if asked. Stored so a team can reread what they paid
+    for without buying it again.
+    """
+
+    __tablename__ = "research_reports"
+    __table_args__ = (Index("ix_research_team_symbol", "team_id", "symbol"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    symbol: Mapped[str] = mapped_column(String(24))
+    house_name: Mapped[str] = mapped_column(String(80))
+    rating: Mapped[str] = mapped_column(String(16))  # BUY | ACCUMULATE | HOLD | REDUCE | SELL
+    target_price: Mapped[Decimal | None] = mapped_column()
+    headline: Mapped[str] = mapped_column(String(240))
+    body: Mapped[str] = mapped_column(Text)
+    cost: Mapped[Decimal] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AuditLog(Base):

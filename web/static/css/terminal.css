@@ -1285,3 +1285,22 @@ body.has-offline .app {
 .position-detail { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .position-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .position-pct { font-size: 11px; }
+
+/* ---- research report card ----
+ * Styled like a small letterhead: house name up top in a label treatment,
+ * a rating pill and target price on one line, then the headline and body.
+ * Deliberately not styled to resemble any real brokerage's report template. */
+.report-card { display: flex; flex-direction: column; gap: 8px; }
+.report-house {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+.report-top { display: flex; align-items: center; gap: 10px; }
+.report-target { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.report-headline { font-weight: 600; font-size: 14px; line-height: 1.35; }
+.report-body { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 0; }

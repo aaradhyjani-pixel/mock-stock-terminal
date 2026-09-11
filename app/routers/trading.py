@@ -14,10 +14,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import get_rules
+from ..config import get_rules, get_settings
 from ..db import get_db, locked_team, session_scope
 from ..engine import pricing
 from ..engine.market import get_engine
@@ -25,18 +26,22 @@ from ..engine.matching import (
     OrderRejected,
     cancel_order,
     load_marks,
+    post_ledger,
     valuate_team,
 )
 from ..engine.matching import submit_order as engine_submit
 from ..fees import compute_fees
+from ..ai import AiNewsError, AiNewsUnavailable, draft_research
 from ..models import (
     AuditLog,
     Fill,
     Instrument,
+    LedgerKind,
     Order,
     OrderSide,
     OrderStatus,
     OrderType,
+    ResearchReport,
     Team,
 )
 from ..money import ZERO, money, paise
@@ -44,11 +49,13 @@ from ..risk import max_affordable_qty, project_available
 from ..schemas import (
     OrderRequest,
     PreviewRequest,
+    ResearchRequest,
     fill_row,
     ledger_row,
     order_row,
     percent,
     position_row,
+    research_row,
     rupees,
 )
 from ..security import MemberIdentity, SlidingWindow, current_member
@@ -377,6 +384,140 @@ async def team_activity(
             if row.actor_id in members
         ],
     }
+
+
+# ------------------------------------------------------------- research desk
+
+_research_limiter = SlidingWindow(limit=10, window_seconds=600.0)
+_research_cooldowns: dict[tuple[int, str], float] = {}
+
+
+@router.get("/research/status")
+async def research_status():
+    """So the terminal can grey the button out with a real reason."""
+    rules = get_rules().research
+    available = rules.enabled and get_settings().ai_news_available
+    return {"available": available, "cost": rupees(rules.cost)}
+
+
+@router.get("/research")
+async def list_research(
+    identity: MemberIdentity = Depends(current_member),
+    session: AsyncSession = Depends(get_db),
+    symbol: str | None = None,
+):
+    """Reports this team already bought. Free to reread, never re-charged."""
+    stmt = select(ResearchReport).where(ResearchReport.team_id == identity.team_id)
+    if symbol:
+        stmt = stmt.where(ResearchReport.symbol == symbol.upper())
+    stmt = stmt.order_by(ResearchReport.created_at.desc())
+    reports = list((await session.execute(stmt)).scalars())
+    return {"reports": [research_row(r) for r in reports]}
+
+
+@router.post("/research")
+async def buy_research(
+    payload: ResearchRequest,
+    identity: MemberIdentity = Depends(current_member),
+):
+    """Spend real cash on a fictional analyst's opinion of one stock.
+
+    This is colour and a strategic choice, never an edge: the model drafting
+    the report is only ever given the stock's public price and today's move,
+    the same numbers already on the watchlist. There is no scenario data in
+    its input for it to leak, so paying for this can make a team feel more
+    informed, never actually better informed than reading the tape.
+    """
+    import time
+
+    rules = get_rules().research
+    if not rules.enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The research desk is switched off for this event.")
+
+    if not _research_limiter.check(f"research:{identity.team_id}"):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many research requests in a short time. Wait a few minutes.",
+        )
+
+    cooldown_key = (identity.team_id, payload.symbol)
+    now = time.monotonic()
+    remaining = rules.cooldown_seconds_per_symbol - (now - _research_cooldowns.get(cooldown_key, 0))
+    if remaining > 0:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"A report on {payload.symbol} was bought recently. "
+            f"Wait {int(remaining)}s before buying another one for the same stock.",
+        )
+
+    async with locked_team(identity.team_id):
+        async with session_scope() as session:
+            instrument = (
+                await session.execute(select(Instrument).where(Instrument.symbol == payload.symbol))
+            ).scalar_one_or_none()
+            if instrument is None:
+                raise HTTPException(404, f"{payload.symbol} is not listed in this competition.")
+
+            team = (await session.execute(select(Team).where(Team.id == identity.team_id))).scalar_one()
+            if team.cash < rules.cost:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"A report costs {rupees(rules.cost)}. Your team has {rupees(team.cash)} in cash.",
+                )
+
+            change_pct = (
+                (instrument.last_price - instrument.prev_close) / instrument.prev_close * 100
+                if instrument.prev_close > 0
+                else ZERO
+            )
+
+            try:
+                draft = await run_in_threadpool(
+                    draft_research,
+                    instrument.symbol,
+                    instrument.name,
+                    instrument.sector,
+                    instrument.last_price,
+                    money(change_pct),
+                )
+            except AiNewsUnavailable as exc:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+            except AiNewsError as exc:
+                raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+            post_ledger(
+                session,
+                team,
+                LedgerKind.RESEARCH,
+                -rules.cost,
+                note=f"Research report: {payload.symbol} from {draft.house_name}",
+            )
+            report = ResearchReport(
+                team_id=identity.team_id,
+                symbol=payload.symbol,
+                house_name=draft.house_name,
+                rating=draft.rating,
+                target_price=draft.target_price,
+                headline=draft.headline,
+                body=draft.body,
+                cost=rules.cost,
+            )
+            session.add(report)
+            await session.flush()
+            _research_cooldowns[cooldown_key] = now
+            session.add(
+                AuditLog(
+                    actor_type="member",
+                    actor_id=identity.member.id,
+                    actor_name=identity.member.name,
+                    action="research.buy",
+                    target=payload.symbol,
+                )
+            )
+            row = research_row(report)
+
+    await _push_portfolio(identity.team_id)
+    return row
 
 
 async def _push_portfolio(team_id: int) -> None:

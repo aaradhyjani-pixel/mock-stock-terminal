@@ -157,6 +157,29 @@ class NewsRequest(BaseModel):
         return [s.strip().upper() for s in v if s.strip()]
 
 
+class ResearchRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=24)
+
+    @field_validator("symbol")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+def research_row(report) -> dict:
+    return {
+        "id": report.id,
+        "symbol": report.symbol,
+        "house_name": report.house_name,
+        "rating": report.rating,
+        "target_price": rupees(report.target_price) if report.target_price is not None else None,
+        "headline": report.headline,
+        "body": report.body,
+        "cost": rupees(report.cost),
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+    }
+
+
 class AiNewsDraftRequest(BaseModel):
     prompt: str = Field(min_length=3, max_length=500)
     symbols: list[str] = Field(default_factory=list)
